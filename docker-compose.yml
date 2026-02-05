@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  runpod-serverless:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: runpod-serverless:latest
+    container_name: runpod-serverless
+
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # Environment variables
+    environment:
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
+      - CUDA_VISIBLE_DEVICES=0
+
+    # Volume mappings
+    volumes:
+      # Mount model directories (so you don't lose models when container restarts)
+      - ./TTS/pretrained_models:/app/TTS/pretrained_models
+      - ./RVC/weights:/app/RVC/weights
+      - ./example/results:/app/example/results
+
+      # Optional: Mount source code for development
+      # - ./TTS:/app/TTS
+      # - ./RVC:/app/RVC
+
+    # Keep container running
+    stdin_open: true
+    tty: true
+
+    # Network
+    network_mode: bridge
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Command (override if needed)
+    command: bash
