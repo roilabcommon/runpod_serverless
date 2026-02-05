@@ -1,6 +1,6 @@
 # Use NVIDIA CUDA base image with Python
-# Updated to CUDA 12.4 to match PyTorch version
-FROM nvidia/cuda:12.4.0-cudnn9-devel-ubuntu22.04
+# Updated to CUDA 12.4.1 with cuDNN to match PyTorch version
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
