@@ -1,6 +1,6 @@
 # Use NVIDIA CUDA base image with Python
-# Note: Using CUDA 12.1 base image, PyTorch cu124 builds are forward compatible
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
+# Updated to CUDA 12.4 to match PyTorch version
+FROM nvidia/cuda:12.4.0-cudnn9-devel-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -58,7 +58,9 @@ RUN pip install --no-cache-dir \
     scipy \
     tqdm \
     einops \
-    huggingface-hub
+    huggingface-hub \
+    runpod==1.7.5 \
+    requests
 
 # Install TTS dependencies
 WORKDIR /app/TTS
