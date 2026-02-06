@@ -88,6 +88,9 @@ RUN echo "=================================" && \
         echo "Warning: SparkTTS clone failed, skipping..."; \
     fi
 
+# Reinstall transformers to ensure correct version (SparkTTS may have downgraded it)
+RUN pip install --no-cache-dir --force-reinstall --no-deps transformers==4.56.2
+
 # Create vibevoice directory for model downloads
 RUN mkdir -p /app/TTS/vibevoice
 
@@ -197,6 +200,7 @@ RUN echo "==================================" && \
     echo "==================================" && \
     python -c "import torch; print(f'PyTorch: {torch.__version__}')" && \
     python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}')" && \
+    python -c "import transformers; print(f'Transformers: {transformers.__version__}')" && \
     echo "TTS modules:" && \
     ls -la /app/TTS/ && \
     echo "RVC modules:" && \
