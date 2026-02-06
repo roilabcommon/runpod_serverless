@@ -1,0 +1,18 @@
+# Windows-specific requirements for local testing
+# Use this file if you want to test handler.py locally on Windows
+#
+# Installation:
+#   pip install -r requirements.txt
+#   pip uninstall bitsandbytes -y
+#   pip install bitsandbytes-windows
+#
+# Note: Local testing is OPTIONAL. You can skip this and directly deploy to RunPod.
+
+# Replace bitsandbytes with Windows-compatible version
+bitsandbytes-windows==0.41.1
+
+# PyTorch with CUDA support (Windows)
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
