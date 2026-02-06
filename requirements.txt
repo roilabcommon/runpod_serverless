@@ -75,7 +75,6 @@ omegaconf @ git+https://huggingface.co/datasets/soiz1/omegaconf@5ddebad2589b6c34
 onnx==1.19.0
 onnx2torch==1.5.15
 onnxruntime-gpu==1.23.0
-optimum==2.1.0
 optimum-quanto==0.2.7
 orjson==3.11.3
 packaging==25.0
