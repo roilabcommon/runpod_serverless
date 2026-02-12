@@ -69,6 +69,7 @@ os.chdir(original_cwd)
 # Models are loaded once at container startup and reused for all requests
 vibevoice_model = None
 spark_model = None
+_spark_init_error = None  # Store Spark init error for debug
 
 # ===== HELPER FUNCTIONS =====
 
@@ -206,6 +207,7 @@ def initialize_models() -> None:
             logger.warning("VibeVoiceModel class or model path not available")
 
         # Initialize Spark model
+        global _spark_init_error
         if SparkModel is not None and spark_model_path is not None:
             try:
                 logger.info(f"Loading Spark model from: {spark_model_path}")
@@ -216,12 +218,13 @@ def initialize_models() -> None:
                 logger.info("Spark model loaded successfully")
             except Exception as e:
                 import traceback
+                _spark_init_error = traceback.format_exc()
                 logger.error(f"Spark model failed: {e}")
-                logger.error(f"Spark model traceback: {traceback.format_exc()}")
+                logger.error(f"Spark model traceback: {_spark_init_error}")
                 spark_model = None
         else:
-            logger.warning(f"SparkModel class or model path not available "
-                           f"(class={SparkModel is not None}, path={spark_model_path})")
+            _spark_init_error = f"SparkModel class={SparkModel is not None}, path={spark_model_path}"
+            logger.warning(f"SparkModel class or model path not available: {_spark_init_error}")
 
         # Verify at least one model loaded
         if vibevoice_model is None and spark_model is None:
@@ -284,6 +287,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 "vibevoice_loaded": vibevoice_model is not None,
                 "spark_loaded": spark_model is not None,
                 "spark_class_available": SparkModel is not None,
+                "spark_init_error": _spark_init_error,
                 "tts_dir": TTS_DIR,
                 "tts_dir_contents": os.listdir(TTS_DIR) if os.path.isdir(TTS_DIR) else "NOT FOUND",
                 "cli_dir_exists": os.path.isdir(os.path.join(TTS_DIR, "cli")),
