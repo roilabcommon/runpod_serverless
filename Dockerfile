@@ -110,26 +110,26 @@ RUN pip install --no-cache-dir \
     unidecode \
     inflect
 
-# Create TTS model directories
+# Model directories on Network Volume (downloaded at runtime by start.sh)
+# Docker build does NOT download models - they are loaded from /runpod-volume/models/ at runtime
 RUN mkdir -p pretrained_models/Spark-TTS-0.5B
 
-# Download Spark-TTS-0.5B model (default: skip, models are loaded from Network Volume at runtime)
+# Download models only if SKIP_MODEL_DOWNLOAD=false (docker-embedded strategy)
 RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
         echo "=================================" && \
         echo "Downloading Spark-TTS-0.5B model..." && \
         echo "=================================" && \
-        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='SparkAudio/Spark-TTS-0.5B', local_dir='/app/TTS/pretrained_models/Spark-TTS-0.5B', local_dir_use_symlinks=False)" && \
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='SparkAudio/Spark-TTS-0.5B', local_dir='/runpod-volume/models/Spark-TTS-0.5B', local_dir_use_symlinks=False)" && \
         echo "Spark-TTS model download completed"; \
     else \
         echo "Skipping Spark-TTS-0.5B download (will be loaded from Network Volume at runtime)"; \
     fi
 
-# Download VibeVoice-7B model (default: skip, models are loaded from Network Volume at runtime)
 RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
         echo "=================================" && \
         echo "Downloading VibeVoice-7B model..." && \
         echo "=================================" && \
-        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='vibevoice/VibeVoice-7B', local_dir='/app/TTS/vibevoice/VibeVoice-7B', local_dir_use_symlinks=False)" && \
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='vibevoice/VibeVoice-7B', local_dir='/runpod-volume/models/VibeVoice-7B', local_dir_use_symlinks=False)" && \
         echo "VibeVoice model download completed"; \
     else \
         echo "Skipping VibeVoice-7B download (will be loaded from Network Volume at runtime)"; \
