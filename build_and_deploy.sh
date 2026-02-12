@@ -8,7 +8,7 @@ set -e  # 오류 발생 시 중단
 DOCKER_USERNAME="${DOCKER_USERNAME:-your-username}"
 IMAGE_NAME="runpod-tts-handler"
 VERSION="latest"
-STRATEGY="hybrid"
+STRATEGY="volume-only"
 NO_PUSH=false
 HELP=false
 
@@ -20,10 +20,10 @@ Usage: $0 [OPTIONS]
 Docker 빌드 및 배포 스크립트 - RunPod Network Volume 지원
 
 OPTIONS:
-    --strategy <type>           배포 전략 선택 (기본값: hybrid)
-                                  volume-only: Network Volume만 사용 (이미지 ~5-7GB)
+    --strategy <type>           배포 전략 선택 (기본값: volume-only)
+                                  volume-only: Network Volume에서 모델 로드 (권장, 이미지 ~5-7GB)
                                   docker-embedded: Docker에 모델 포함 (이미지 ~20-25GB)
-                                  hybrid: Docker + Volume 혼합 (권장, 이미지 ~20-25GB)
+                                  hybrid: Docker + Volume 혼합 (이미지 ~20-25GB)
 
     --skip-models               --strategy volume-only의 단축키
 

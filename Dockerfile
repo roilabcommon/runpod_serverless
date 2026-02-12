@@ -2,8 +2,9 @@
 # Updated to CUDA 12.4.1 with cuDNN to match PyTorch version
 FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
-# Build argument: set to "true" to skip embedding models (use network volume instead)
-ARG SKIP_MODEL_DOWNLOAD=false
+# Build argument: models are loaded from Network Volume at runtime
+# Set to "false" to embed models in Docker image (hybrid/docker-embedded strategy)
+ARG SKIP_MODEL_DOWNLOAD=true
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -112,7 +113,7 @@ RUN pip install --no-cache-dir \
 # Create TTS model directories
 RUN mkdir -p pretrained_models/Spark-TTS-0.5B
 
-# Download Spark-TTS-0.5B model (skip if using network volume)
+# Download Spark-TTS-0.5B model (default: skip, models are loaded from Network Volume at runtime)
 RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
         echo "=================================" && \
         echo "Downloading Spark-TTS-0.5B model..." && \
@@ -120,10 +121,10 @@ RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
         python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='SparkAudio/Spark-TTS-0.5B', local_dir='/app/TTS/pretrained_models/Spark-TTS-0.5B', local_dir_use_symlinks=False)" && \
         echo "Spark-TTS model download completed"; \
     else \
-        echo "Skipping Spark-TTS-0.5B download (SKIP_MODEL_DOWNLOAD=true)"; \
+        echo "Skipping Spark-TTS-0.5B download (will be loaded from Network Volume at runtime)"; \
     fi
 
-# Download VibeVoice-7B model (skip if using network volume)
+# Download VibeVoice-7B model (default: skip, models are loaded from Network Volume at runtime)
 RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
         echo "=================================" && \
         echo "Downloading VibeVoice-7B model..." && \
@@ -131,7 +132,7 @@ RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
         python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='vibevoice/VibeVoice-7B', local_dir='/app/TTS/vibevoice/VibeVoice-7B', local_dir_use_symlinks=False)" && \
         echo "VibeVoice model download completed"; \
     else \
-        echo "Skipping VibeVoice-7B download (SKIP_MODEL_DOWNLOAD=true)"; \
+        echo "Skipping VibeVoice-7B download (will be loaded from Network Volume at runtime)"; \
     fi
 
 # Install RVC dependencies
@@ -216,5 +217,8 @@ RUN echo "==================================" && \
     ls -la /app/RVC/ && \
     echo "=================================="
 
-# Default command - Run RunPod serverless handler
-CMD ["python", "-u", "handler.py"]
+# Make entrypoint script executable
+RUN chmod +x /app/start.sh
+
+# Default command - Download models to Network Volume, then start handler
+CMD ["/app/start.sh"]

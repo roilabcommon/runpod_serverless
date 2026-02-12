@@ -1,10 +1,13 @@
 """
 Model Cache Manager for RunPod Network Volume
 
+Models are stored on Network Volume and shared across all workers.
+On first worker start, models are automatically downloaded from HuggingFace Hub.
+
 Resolves model paths with priority:
-1. Network Volume (fast, shared across workers)
-2. Embedded in Docker image (fallback, backward compatible)
-3. Download to Network Volume on first use
+1. Network Volume (primary - fast, shared across workers)
+2. Download to Network Volume from HuggingFace Hub (first use)
+3. Embedded in Docker image (fallback, only if SKIP_MODEL_DOWNLOAD=false was used)
 
 Environment Variables:
     RUNPOD_VOLUME_PATH: Mount point of RunPod Network Volume (default: /runpod-volume)
@@ -170,15 +173,18 @@ def resolve_model_path(model_key):
 
     volume_path = get_volume_path()
 
-    # --- No Network Volume: use Docker embedded models ---
+    # --- No Network Volume: use Docker embedded models as fallback ---
     if volume_path is None:
-        logger.info(f"[{model_key}] No network volume. Using Docker path: {docker_path}")
+        logger.warning(f"[{model_key}] No network volume detected! "
+                       f"Checked: {os.environ.get('RUNPOD_VOLUME_PATH', DEFAULT_VOLUME_PATH)}")
+        logger.info(f"[{model_key}] Falling back to Docker embedded path: {docker_path}")
         if os.path.isdir(docker_path) and _is_model_complete(docker_path, model_key):
             return docker_path
         else:
             raise FileNotFoundError(
-                f"No network volume and Docker model not found at {docker_path}. "
-                f"Mount a network volume or embed models in the Docker image."
+                f"No network volume mounted and Docker model not found at {docker_path}. "
+                f"Please mount Network Volume 'roi_ai_studio' to /runpod-volume, "
+                f"or rebuild Docker image with SKIP_MODEL_DOWNLOAD=false."
             )
 
     # --- Network Volume available ---

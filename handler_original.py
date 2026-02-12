@@ -9,6 +9,7 @@ import numpy as np
 import logging
 from io import BytesIO
 import requests
+from model_cache import resolve_model_path
 
 # Get the application root directory
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -125,32 +126,50 @@ def initialize_models():
         os.chdir(TTS_DIR)
         logger.info(f"Changed working directory to: {os.getcwd()}")
 
-        # Initialize VibeVoice model if available
+        # Resolve model paths (Network Volume → HuggingFace download → Docker fallback)
+        vibevoice_model_path = None
+        spark_model_path = None
+
         try:
-            logger.info("Loading VibeVoice model...")
-            from VibeVoiceModel import VibeVoiceModel
-            vibevoice_model = VibeVoiceModel()
-            logger.info("✅ VibeVoice model loaded successfully")
+            vibevoice_model_path = resolve_model_path("vibevoice")
+            logger.info(f"VibeVoice model path resolved: {vibevoice_model_path}")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to load VibeVoice model: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.warning(f"VibeVoice model path not resolved: {e}")
+
+        try:
+            spark_model_path = resolve_model_path("spark")
+            logger.info(f"Spark model path resolved: {spark_model_path}")
+        except Exception as e:
+            logger.warning(f"Spark model path not resolved: {e}")
+
+        # Initialize VibeVoice model if available
+        if vibevoice_model_path is not None:
+            try:
+                logger.info("Loading VibeVoice model...")
+                from VibeVoiceModel import VibeVoiceModel
+                vibevoice_model = VibeVoiceModel(model_path=vibevoice_model_path)
+                logger.info("✅ VibeVoice model loaded successfully")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load VibeVoice model: {e}")
+                import traceback
+                traceback.print_exc()
+                vibevoice_model = None
+        else:
+            logger.warning("⚠️ VibeVoice model path not available")
             vibevoice_model = None
 
         # Initialize Spark model if available
-        try:
-            logger.info("Loading Spark model...")
-            model_dir = "pretrained_models/Spark-TTS-0.5B"
-            if os.path.exists(model_dir):
+        if spark_model_path is not None:
+            try:
+                logger.info("Loading Spark model...")
                 from SparkModel import SparkModel
-                spark_model = SparkModel(model_dir=model_dir)
+                spark_model = SparkModel(model_dir=spark_model_path)
                 logger.info("✅ Spark model loaded successfully")
-            else:
-                logger.warning(f"⚠️ Spark model directory not found: {model_dir}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load Spark model: {e}")
                 spark_model = None
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to load Spark model: {e}")
-            logger.warning("💡 Tip: Run 'python install_sparktts.py' to install SparkTTS locally")
+        else:
+            logger.warning("⚠️ Spark model path not available")
             spark_model = None
 
         if vibevoice_model is None and spark_model is None:

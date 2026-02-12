@@ -151,13 +151,22 @@ def initialize_models() -> None:
     """
     Initialize TTS models at startup.
     This function is called ONCE when the container starts.
-    Models are loaded from Network Volume (if available) or Docker image.
+    Models are loaded from Network Volume (primary) or downloaded from HuggingFace Hub.
+    Docker embedded models are used as fallback only.
     """
     global vibevoice_model, spark_model
 
     logger.info("=" * 50)
     logger.info("Initializing TTS models...")
     logger.info("=" * 50)
+
+    # Log volume status
+    from model_cache import get_volume_path
+    volume_path = get_volume_path()
+    if volume_path:
+        logger.info(f"Network Volume detected: {volume_path}")
+    else:
+        logger.warning("No Network Volume detected! Models will use Docker fallback.")
 
     # Save current directory
     current_dir = os.getcwd()
@@ -166,19 +175,19 @@ def initialize_models() -> None:
         # Change to TTS directory for model initialization
         os.chdir(TTS_DIR)
 
-        # Resolve model paths (Network Volume or Docker fallback)
+        # Resolve model paths (Network Volume → HuggingFace download → Docker fallback)
         vibevoice_model_path = None
         spark_model_path = None
 
         try:
             vibevoice_model_path = resolve_model_path("vibevoice")
-            logger.info(f"VibeVoice model path: {vibevoice_model_path}")
+            logger.info(f"VibeVoice model path resolved: {vibevoice_model_path}")
         except Exception as e:
             logger.warning(f"VibeVoice model path not resolved: {e}")
 
         try:
             spark_model_path = resolve_model_path("spark")
-            logger.info(f"Spark model path: {spark_model_path}")
+            logger.info(f"Spark model path resolved: {spark_model_path}")
         except Exception as e:
             logger.warning(f"Spark model path not resolved: {e}")
 
@@ -212,8 +221,11 @@ def initialize_models() -> None:
 
         logger.info("=" * 50)
         logger.info("Model initialization complete")
-        logger.info(f"   VibeVoice: {'loaded' if vibevoice_model else 'unavailable'}")
-        logger.info(f"   Spark: {'loaded' if spark_model else 'unavailable'}")
+        logger.info(f"   VibeVoice: {'loaded' if vibevoice_model else 'unavailable'}"
+                    f" (path: {vibevoice_model_path})")
+        logger.info(f"   Spark: {'loaded' if spark_model else 'unavailable'}"
+                    f" (path: {spark_model_path})")
+        logger.info(f"   Source: {'Network Volume' if volume_path else 'Docker embedded'}")
         logger.info("=" * 50)
 
     finally:

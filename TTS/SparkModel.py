@@ -8,11 +8,20 @@ from datetime import datetime
 from cli.SparkTTS import SparkTTS
 
 class SparkModel:
-    def __init__(self, model_dir="TTS/pretrained_models/Spark-TTS-0.5B", device=0):
+    def __init__(self, model_dir=None, device=0):
         self.model = None
         self.device = None
-        """Load the model once at the beginning."""
-        logging.info(f"Loading model from: {model_dir}")    
+        """Load the model once at the beginning.
+
+        Args:
+            model_dir: Path to Spark-TTS model directory.
+                       Resolved by model_cache.py (Network Volume or Docker fallback).
+        """
+        if model_dir is None:
+            # Default: Network Volume path
+            volume_path = os.environ.get("RUNPOD_VOLUME_PATH", "/runpod-volume")
+            model_dir = os.path.join(volume_path, "models", "Spark-TTS-0.5B")
+        logging.info(f"Loading Spark model from: {model_dir}")
         # Determine appropriate device based on platform and availability
         if platform.system() == "Darwin":
             # macOS with MPS support (Apple Silicon)

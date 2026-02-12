@@ -42,7 +42,11 @@ class VibeVoiceModel:
             or
             pip install bitsandbytes  (for Linux)
         """
-        self.model_path = model_path if model_path is not None else "vibevoice/VibeVoice-7B"
+        if model_path is None:
+            # Default: Network Volume path
+            volume_path = os.environ.get("RUNPOD_VOLUME_PATH", "/runpod-volume")
+            model_path = os.path.join(volume_path, "models", "VibeVoice-7B")
+        self.model_path = model_path
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.inference_steps = 20
         self.cfg_scale = 2.0
