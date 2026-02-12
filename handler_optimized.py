@@ -20,7 +20,6 @@ import numpy as np
 import logging
 import requests
 from typing import Optional, Tuple, Dict, Any
-from model_cache import resolve_model_path
 
 # ===== STARTUP OPTIMIZATION =====
 # Configure logging early
@@ -151,7 +150,6 @@ def initialize_models() -> None:
     """
     Initialize TTS models at startup.
     This function is called ONCE when the container starts.
-    Models are loaded from Network Volume (if available) or Docker image.
     """
     global vibevoice_model, spark_model
 
@@ -166,54 +164,43 @@ def initialize_models() -> None:
         # Change to TTS directory for model initialization
         os.chdir(TTS_DIR)
 
-        # Resolve model paths (Network Volume or Docker fallback)
-        vibevoice_model_path = None
-        spark_model_path = None
-
-        try:
-            vibevoice_model_path = resolve_model_path("vibevoice")
-            logger.info(f"VibeVoice model path: {vibevoice_model_path}")
-        except Exception as e:
-            logger.warning(f"VibeVoice model path not resolved: {e}")
-
-        try:
-            spark_model_path = resolve_model_path("spark")
-            logger.info(f"Spark model path: {spark_model_path}")
-        except Exception as e:
-            logger.warning(f"Spark model path not resolved: {e}")
-
         # Initialize VibeVoice model
-        if VibeVoiceModel is not None and vibevoice_model_path is not None:
+        if VibeVoiceModel is not None:
             try:
                 logger.info("Loading VibeVoice model...")
-                vibevoice_model = VibeVoiceModel(model_path=vibevoice_model_path)
-                logger.info("VibeVoice model loaded")
+                vibevoice_model = VibeVoiceModel()
+                logger.info("✅ VibeVoice model loaded")
             except Exception as e:
-                logger.error(f"VibeVoice model failed: {e}")
+                logger.error(f"❌ VibeVoice model failed: {e}")
                 vibevoice_model = None
         else:
-            logger.warning("VibeVoiceModel class or model path not available")
+            logger.warning("⚠ VibeVoiceModel class not available")
 
         # Initialize Spark model
-        if SparkModel is not None and spark_model_path is not None:
+        if SparkModel is not None:
             try:
-                logger.info("Loading Spark model...")
-                spark_model = SparkModel(model_dir=spark_model_path)
-                logger.info("Spark model loaded")
+                model_dir = "pretrained_models/Spark-TTS-0.5B"
+                if os.path.exists(model_dir):
+                    logger.info("Loading Spark model...")
+                    spark_model = SparkModel(model_dir=model_dir)
+                    logger.info("✅ Spark model loaded")
+                else:
+                    logger.warning(f"⚠ Spark model directory not found: {model_dir}")
+                    spark_model = None
             except Exception as e:
-                logger.error(f"Spark model failed: {e}")
+                logger.error(f"❌ Spark model failed: {e}")
                 spark_model = None
         else:
-            logger.warning("SparkModel class or model path not available")
+            logger.warning("⚠ SparkModel class not available")
 
         # Verify at least one model loaded
         if vibevoice_model is None and spark_model is None:
-            raise RuntimeError("No TTS models could be loaded!")
+            raise RuntimeError("❌ No TTS models could be loaded!")
 
         logger.info("=" * 50)
-        logger.info("Model initialization complete")
-        logger.info(f"   VibeVoice: {'loaded' if vibevoice_model else 'unavailable'}")
-        logger.info(f"   Spark: {'loaded' if spark_model else 'unavailable'}")
+        logger.info("🚀 Model initialization complete")
+        logger.info(f"   VibeVoice: {'✅' if vibevoice_model else '❌'}")
+        logger.info(f"   Spark: {'✅' if spark_model else '❌'}")
         logger.info("=" * 50)
 
     finally:

@@ -2,10 +2,14 @@
 # Updated to CUDA 12.4.1 with cuDNN to match PyTorch version
 FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
+# Build argument: set to "true" to skip embedding models (use network volume instead)
+ARG SKIP_MODEL_DOWNLOAD=false
+
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
+ENV RUNPOD_VOLUME_PATH=/runpod-volume
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -108,22 +112,27 @@ RUN pip install --no-cache-dir \
 # Create TTS model directories
 RUN mkdir -p pretrained_models/Spark-TTS-0.5B
 
-# Download Spark-TTS-0.5B model
-RUN echo "=================================" && \
-    echo "Downloading Spark-TTS-0.5B model..." && \
-    echo "=================================" && \
-    python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='SparkAudio/Spark-TTS-0.5B', local_dir='/app/TTS/pretrained_models/Spark-TTS-0.5B', local_dir_use_symlinks=False)" || \
-    echo "Warning: Failed to download Spark-TTS-0.5B model" && \
-    echo "Spark-TTS model download completed"
+# Download Spark-TTS-0.5B model (skip if using network volume)
+RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
+        echo "=================================" && \
+        echo "Downloading Spark-TTS-0.5B model..." && \
+        echo "=================================" && \
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='SparkAudio/Spark-TTS-0.5B', local_dir='/app/TTS/pretrained_models/Spark-TTS-0.5B', local_dir_use_symlinks=False)" && \
+        echo "Spark-TTS model download completed"; \
+    else \
+        echo "Skipping Spark-TTS-0.5B download (SKIP_MODEL_DOWNLOAD=true)"; \
+    fi
 
-# Download VibeVoice-7B model
-RUN echo "" && \
-    echo "=================================" && \
-    echo "Downloading VibeVoice-7B model..." && \
-    echo "=================================" && \
-    python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='vibevoice/VibeVoice-7B', local_dir='/app/TTS/vibevoice/VibeVoice-7B', local_dir_use_symlinks=False)" || \
-    echo "Warning: Failed to download VibeVoice-7B model" && \
-    echo "VibeVoice model download completed"
+# Download VibeVoice-7B model (skip if using network volume)
+RUN if [ "$SKIP_MODEL_DOWNLOAD" = "false" ]; then \
+        echo "=================================" && \
+        echo "Downloading VibeVoice-7B model..." && \
+        echo "=================================" && \
+        python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='vibevoice/VibeVoice-7B', local_dir='/app/TTS/vibevoice/VibeVoice-7B', local_dir_use_symlinks=False)" && \
+        echo "VibeVoice model download completed"; \
+    else \
+        echo "Skipping VibeVoice-7B download (SKIP_MODEL_DOWNLOAD=true)"; \
+    fi
 
 # Install RVC dependencies
 WORKDIR /app/RVC

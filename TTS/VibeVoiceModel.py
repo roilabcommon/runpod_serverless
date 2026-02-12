@@ -29,16 +29,20 @@ def clear_memory():
 
 
 class VibeVoiceModel:
-    def __init__(self):
+    def __init__(self, model_path=None):
         """
         Initialize VibeVoice model optimized for 11GB VRAM using 4-bit quantization.
-        
+
+        Args:
+            model_path: Path to model directory. If None, uses default
+                        relative path "vibevoice/VibeVoice-7B".
+
         Requirements:
             pip install bitsandbytes-windows  (for Windows)
             or
             pip install bitsandbytes  (for Linux)
         """
-        self.model_path = "vibevoice/VibeVoice-7B"
+        self.model_path = model_path if model_path is not None else "vibevoice/VibeVoice-7B"
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.inference_steps = 20
         self.cfg_scale = 2.0
