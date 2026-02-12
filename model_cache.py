@@ -64,13 +64,11 @@ def _is_model_complete(model_dir, model_key):
     if not os.path.isdir(model_dir):
         return False
 
-    # Check for config.json as minimum indicator
-    config_file = os.path.join(model_dir, "config.json")
-    if not os.path.exists(config_file):
-        return False
-
     if model_key == "vibevoice":
-        # Check for safetensors or bin weight files
+        # Check for config.json + safetensors or bin weight files
+        config_file = os.path.join(model_dir, "config.json")
+        if not os.path.exists(config_file):
+            return False
         has_weights = any(
             f.endswith((".safetensors", ".bin"))
             for f in os.listdir(model_dir)
@@ -79,9 +77,10 @@ def _is_model_complete(model_dir, model_key):
         return has_weights
 
     if model_key == "spark":
-        # Check for BiCodec directory (critical subcomponent)
+        # Spark-TTS uses config.yaml (not config.json) + BiCodec directory
+        config_yaml = os.path.join(model_dir, "config.yaml")
         bicodec_dir = os.path.join(model_dir, "BiCodec")
-        return os.path.isdir(bicodec_dir)
+        return os.path.exists(config_yaml) and os.path.isdir(bicodec_dir)
 
     return True
 

@@ -14,7 +14,7 @@ HELP=false
 
 # RunPod 설정
 RUNPOD_API_KEY="${RUNPOD_API_KEY:-}"
-RUNPOD_VOLUME_ID="${RUNPOD_VOLUME_ID:-6qx4rq0ypa}"
+RUNPOD_VOLUME_ID="${RUNPOD_VOLUME_ID:-6vof5bpccl}"
 
 # 도움말 함수
 show_help() {
@@ -252,8 +252,8 @@ case $STRATEGY in
         cat << EOF
 1. Create a RunPod Network Volume:
    - Go to RunPod Console > Serverless > Storage
-   - Create new volume: name=roi_ai_studio, size=50GB, region=US-TX-3
-   - Volume ID: 6qx4rq0ypa (이미 생성됨)
+   - Create new volume: name=roi_ai_studio, size=50GB, region=EU-RO-1
+   - Volume ID: 6vof5bpccl (이미 생성됨)
    - Mount path: /runpod-volume
 
 2. Deploy to RunPod:
@@ -295,8 +295,8 @@ EOF
         cat << EOF
 1. Create a RunPod Network Volume:
    - Go to RunPod Console > Serverless > Storage
-   - Create new volume: name=roi_ai_studio, size=50GB, region=US-TX-3
-   - Volume ID: 6qx4rq0ypa (이미 생성됨)
+   - Create new volume: name=roi_ai_studio, size=50GB, region=EU-RO-1
+   - Volume ID: 6vof5bpccl (이미 생성됨)
    - Mount path: /runpod-volume
 
 2. Deploy to RunPod:

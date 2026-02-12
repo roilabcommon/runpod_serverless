@@ -19,7 +19,7 @@ if [ -d "$VOLUME_PATH" ]; then
 
     # --- Spark-TTS-0.5B 다운로드 ---
     SPARK_DIR="$MODELS_DIR/Spark-TTS-0.5B"
-    if [ -f "$SPARK_DIR/config.json" ] && [ -d "$SPARK_DIR/BiCodec" ]; then
+    if [ -f "$SPARK_DIR/config.yaml" ] && [ -d "$SPARK_DIR/BiCodec" ]; then
         echo "[OK] Spark-TTS-0.5B already exists on volume"
     else
         echo "[DOWNLOAD] Downloading Spark-TTS-0.5B to Network Volume..."
