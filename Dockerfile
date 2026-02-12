@@ -44,10 +44,11 @@ WORKDIR /app
 COPY . /app/
 
 # Install base Python dependencies
+# torch>=2.6 required by transformers 4.56+ for safe torch.load (CVE-2025-32434)
 RUN pip install --no-cache-dir \
-    torch==2.5.1 \
-    torchaudio==2.5.1 \
-    torchvision==0.20.1 \
+    torch==2.6.0 \
+    torchaudio==2.6.0 \
+    torchvision==0.21.0 \
     --index-url https://download.pytorch.org/whl/cu124
 
 # Install common dependencies
