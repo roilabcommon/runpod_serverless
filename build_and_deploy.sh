@@ -12,6 +12,10 @@ STRATEGY="volume-only"
 NO_PUSH=false
 HELP=false
 
+# RunPod 설정
+RUNPOD_API_KEY="${RUNPOD_API_KEY:-}"
+RUNPOD_VOLUME_ID="${RUNPOD_VOLUME_ID:-6qx4rq0ypa}"
+
 # 도움말 함수
 show_help() {
     cat << EOF
@@ -184,7 +188,62 @@ echo "✅ Done!"
 echo "===================================="
 echo ""
 
+# 4. RunPod Endpoint에 Network Volume 연결
+if [[ "$STRATEGY" != "docker-embedded" ]]; then
+    echo ""
+    echo "🔗 Attaching Network Volume to Endpoint..."
+
+    # .env에서 API Key 로드
+    if [ -z "$RUNPOD_API_KEY" ] && [ -f ".env" ]; then
+        RUNPOD_API_KEY=$(grep -oP 'RUNPOD_API_KEY=\K.*' .env 2>/dev/null | tr -d '"' | tr -d "'")
+    fi
+
+    if [ -n "$RUNPOD_API_KEY" ]; then
+        # 현재 Endpoint 조회
+        ENDPOINTS=$(curl -s -X POST "https://api.runpod.io/graphql?api_key=$RUNPOD_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"query": "query { myself { endpoints { id name networkVolumeId gpuIds templateId workersMin workersMax idleTimeout } } }"}')
+
+        ENDPOINT_ID=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0]['id'] if eps else '')" 2>/dev/null)
+
+        if [ -n "$ENDPOINT_ID" ]; then
+            # Endpoint의 현재 Volume 확인
+            CURRENT_VOLUME=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0].get('networkVolumeId') or '')" 2>/dev/null)
+
+            if [ "$CURRENT_VOLUME" = "$RUNPOD_VOLUME_ID" ]; then
+                echo "   ✅ Volume already attached to endpoint $ENDPOINT_ID"
+            else
+                echo "   Endpoint: $ENDPOINT_ID"
+                echo "   Volume:   $RUNPOD_VOLUME_ID"
+
+                # Endpoint 설정 가져오기
+                EP_NAME=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0]['name'])" 2>/dev/null)
+                EP_GPU=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0]['gpuIds'])" 2>/dev/null)
+                EP_TMPL=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0]['templateId'])" 2>/dev/null)
+                EP_MIN=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0]['workersMin'])" 2>/dev/null)
+                EP_MAX=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0]['workersMax'])" 2>/dev/null)
+                EP_IDLE=$(echo "$ENDPOINTS" | python -c "import sys,json; eps=json.load(sys.stdin)['data']['myself']['endpoints']; print(eps[0]['idleTimeout'])" 2>/dev/null)
+
+                RESULT=$(curl -s -X POST "https://api.runpod.io/graphql?api_key=$RUNPOD_API_KEY" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"query\": \"mutation { saveEndpoint(input: { id: \\\"$ENDPOINT_ID\\\", name: \\\"$EP_NAME\\\", gpuIds: \\\"$EP_GPU\\\", networkVolumeId: \\\"$RUNPOD_VOLUME_ID\\\", templateId: \\\"$EP_TMPL\\\", workersMin: $EP_MIN, workersMax: $EP_MAX, idleTimeout: $EP_IDLE }) { id networkVolumeId } }\"}")
+
+                if echo "$RESULT" | grep -q "networkVolumeId"; then
+                    echo "   ✅ Network Volume attached successfully!"
+                else
+                    echo "   ❌ Failed to attach volume: $RESULT"
+                fi
+            fi
+        else
+            echo "   ⚠️  No endpoint found. Create one first, then re-run this script."
+        fi
+    else
+        echo "   ⚠️  RUNPOD_API_KEY not set. Set it in .env or environment to auto-attach volume."
+    fi
+fi
+
 # 전략별 다음 단계 안내
+echo ""
 echo "Next steps for $STRATEGY strategy:"
 echo ""
 
@@ -193,8 +252,9 @@ case $STRATEGY in
         cat << EOF
 1. Create a RunPod Network Volume:
    - Go to RunPod Console > Serverless > Storage
-   - Create new volume: name=roi_ai_studio, size=50GB
-   - Note the mount path: /runpod-volume
+   - Create new volume: name=roi_ai_studio, size=50GB, region=US-TX-3
+   - Volume ID: 6qx4rq0ypa (이미 생성됨)
+   - Mount path: /runpod-volume
 
 2. Deploy to RunPod:
    - Container Image: $FULL_IMAGE
@@ -235,8 +295,9 @@ EOF
         cat << EOF
 1. Create a RunPod Network Volume:
    - Go to RunPod Console > Serverless > Storage
-   - Create new volume: name=roi_ai_studio, size=50GB
-   - Note the mount path: /runpod-volume
+   - Create new volume: name=roi_ai_studio, size=50GB, region=US-TX-3
+   - Volume ID: 6qx4rq0ypa (이미 생성됨)
+   - Mount path: /runpod-volume
 
 2. Deploy to RunPod:
    - Container Image: $FULL_IMAGE
