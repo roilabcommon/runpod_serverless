@@ -58,7 +58,9 @@ try:
     from SparkModel import SparkModel
     logger.info("✓ SparkModel class loaded")
 except Exception as e:
+    import traceback
     logger.warning(f"⚠ SparkModel class not available: {e}")
+    logger.warning(f"⚠ SparkModel traceback: {traceback.format_exc()}")
 
 # Restore directory after imports
 os.chdir(original_cwd)
@@ -206,14 +208,20 @@ def initialize_models() -> None:
         # Initialize Spark model
         if SparkModel is not None and spark_model_path is not None:
             try:
-                logger.info("Loading Spark model...")
+                logger.info(f"Loading Spark model from: {spark_model_path}")
+                logger.info(f"Spark model dir exists: {os.path.isdir(spark_model_path)}")
+                if os.path.isdir(spark_model_path):
+                    logger.info(f"Spark model dir contents: {os.listdir(spark_model_path)}")
                 spark_model = SparkModel(model_dir=spark_model_path)
-                logger.info("Spark model loaded")
+                logger.info("Spark model loaded successfully")
             except Exception as e:
+                import traceback
                 logger.error(f"Spark model failed: {e}")
+                logger.error(f"Spark model traceback: {traceback.format_exc()}")
                 spark_model = None
         else:
-            logger.warning("SparkModel class or model path not available")
+            logger.warning(f"SparkModel class or model path not available "
+                           f"(class={SparkModel is not None}, path={spark_model_path})")
 
         # Verify at least one model loaded
         if vibevoice_model is None and spark_model is None:
@@ -262,6 +270,38 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
     try:
         job_input = event.get("input", {})
+
+        # --- Debug mode: return system status ---
+        if job_input.get("debug") == "status":
+            import traceback
+            from model_cache import get_volume_path, _is_model_complete, MODELS
+            volume_path = get_volume_path()
+            volume_models_dir = os.path.join(volume_path, "models") if volume_path else None
+
+            debug_info = {
+                "volume_path": volume_path,
+                "volume_exists": volume_path is not None,
+                "vibevoice_loaded": vibevoice_model is not None,
+                "spark_loaded": spark_model is not None,
+                "spark_class_available": SparkModel is not None,
+                "tts_dir": TTS_DIR,
+                "tts_dir_contents": os.listdir(TTS_DIR) if os.path.isdir(TTS_DIR) else "NOT FOUND",
+                "cli_dir_exists": os.path.isdir(os.path.join(TTS_DIR, "cli")),
+            }
+
+            if volume_models_dir and os.path.isdir(volume_models_dir):
+                debug_info["volume_models"] = os.listdir(volume_models_dir)
+                spark_dir = os.path.join(volume_models_dir, "Spark-TTS-0.5B")
+                if os.path.isdir(spark_dir):
+                    debug_info["spark_dir_contents"] = os.listdir(spark_dir)
+                    debug_info["spark_complete"] = _is_model_complete(spark_dir, "spark")
+                else:
+                    debug_info["spark_dir_contents"] = "NOT FOUND"
+                    debug_info["spark_complete"] = False
+            else:
+                debug_info["volume_models"] = "NO VOLUME OR MODELS DIR"
+
+            return debug_info
 
         # Validate inputs
         text = job_input.get("text")
