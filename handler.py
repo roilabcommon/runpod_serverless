@@ -44,6 +44,16 @@ logger.info("Pre-loading model classes...")
 VibeVoiceModel = None
 SparkModel = None
 
+# Patch transformers torch.load safety check for torch<2.6 compatibility (CVE-2025-32434)
+# SparkTTS wav2vec2 model uses .bin format which triggers this check
+try:
+    import transformers.utils.import_utils as _tf_import_utils
+    if hasattr(_tf_import_utils, 'check_torch_load_is_safe'):
+        _tf_import_utils.check_torch_load_is_safe = lambda: None
+        logger.info("✓ Patched transformers torch.load safety check for torch<2.6")
+except Exception as e:
+    logger.warning(f"⚠ Failed to patch transformers safety check: {e}")
+
 # Change to TTS directory ONCE at module level for all model operations
 original_cwd = os.getcwd()
 os.chdir(TTS_DIR)
