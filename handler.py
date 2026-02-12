@@ -54,13 +54,15 @@ try:
 except Exception as e:
     logger.warning(f"⚠ VibeVoiceModel class not available: {e}")
 
+_spark_import_error = None  # Store SparkModel import error for debug
 try:
     from SparkModel import SparkModel
     logger.info("✓ SparkModel class loaded")
 except Exception as e:
     import traceback
+    _spark_import_error = traceback.format_exc()
     logger.warning(f"⚠ SparkModel class not available: {e}")
-    logger.warning(f"⚠ SparkModel traceback: {traceback.format_exc()}")
+    logger.warning(f"⚠ SparkModel traceback: {_spark_import_error}")
 
 # Restore directory after imports
 os.chdir(original_cwd)
@@ -287,6 +289,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 "vibevoice_loaded": vibevoice_model is not None,
                 "spark_loaded": spark_model is not None,
                 "spark_class_available": SparkModel is not None,
+                "spark_import_error": _spark_import_error,
                 "spark_init_error": _spark_init_error,
                 "tts_dir": TTS_DIR,
                 "tts_dir_contents": os.listdir(TTS_DIR) if os.path.isdir(TTS_DIR) else "NOT FOUND",
