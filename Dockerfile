@@ -172,14 +172,15 @@ RUN echo "Installing fairseq from source..." && \
 RUN pip install --no-cache-dir infer-rvc-python || \
     (echo "Warning: infer-rvc-python installation failed, continuing..." && exit 0)
 
-# Download RVC model files
-RUN echo "Downloading RMVPE model..." && \
+# Download RVC model files to Network Volume path
+RUN mkdir -p /runpod-volume/RVC && \
+    echo "Downloading RMVPE model..." && \
     wget -q --show-progress https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI/releases/download/20230428/rmvpe.pt \
-        -O rmvpe.pt || echo "Warning: Failed to download rmvpe.pt"
+        -O /runpod-volume/RVC/rmvpe.pt || echo "Warning: Failed to download rmvpe.pt"
 
 RUN echo "Downloading Hubert Base model..." && \
     wget -q --show-progress https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/hubert_base.pt \
-        -O hubert_base.pt || echo "Warning: Failed to download hubert_base.pt"
+        -O /runpod-volume/RVC/hubert_base.pt || echo "Warning: Failed to download hubert_base.pt"
 
 # Create placeholder files if they don't exist
 RUN if [ ! -f "tts_voice.py" ]; then \
@@ -201,8 +202,8 @@ RUN if [ ! -f "model_handler.py" ]; then \
         echo "        pass" >> model_handler.py; \
     fi
 
-# Create RVC directories
-RUN mkdir -p weights
+# Create RVC weights directory on Network Volume path
+RUN mkdir -p /runpod-volume/RVC/weights
 
 # Create output directories
 RUN mkdir -p /app/example/results

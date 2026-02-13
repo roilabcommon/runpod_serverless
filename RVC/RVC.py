@@ -26,10 +26,11 @@ class RVC:
         self.language_dict = tts_order_voice
         self.separator = Separator()
         
-        rmvpe_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'rmvpe.pt')
-        hubert_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'hubert_base.pt')
+        rvc_base = os.path.join(os.environ.get('RUNPOD_VOLUME_PATH', '/runpod-volume'), 'RVC')
+        rmvpe_path = os.path.join(rvc_base, 'rmvpe.pt')
+        hubert_path = os.path.join(rvc_base, 'hubert_base.pt')
         self.converter = BaseLoader(only_cpu=False, hubert_path=hubert_path, rmvpe_path=rmvpe_path)
-        self.model_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'weights')
+        self.model_dir = os.path.join(rvc_base, 'weights')
         print(f"model_dir : {self.model_dir}")
         
 
