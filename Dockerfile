@@ -159,20 +159,19 @@ RUN pip install --no-cache-dir \
     psutil \
     py-cpuinfo
 
-# Install fairseq from source (PyPI version has build issues)
+# Install fairseq from source (non-editable so /tmp can be cleaned up)
+# PyPI fairseq requires omegaconf<2.1 which is rejected by pip 24.1+
 RUN echo "Installing fairseq from source..." && \
     git clone --depth 1 --branch v0.12.2 https://github.com/pytorch/fairseq.git /tmp/fairseq && \
     cd /tmp/fairseq && \
-    pip install --no-cache-dir --editable ./ || \
-    (echo "Warning: fairseq installation failed, continuing..." && exit 0) && \
+    pip install --no-cache-dir . && \
     cd /app/RVC && \
     rm -rf /tmp/fairseq
 
 # Install infer-rvc-python with --no-deps to avoid fairseq/omegaconf dependency conflict
-# (pip 24.1+ rejects omegaconf<2.1 due to invalid metadata, but fairseq is already installed from source)
+# fairseq is already installed from source above; remaining deps installed manually
 RUN pip install --no-cache-dir --no-deps infer-rvc-python && \
-    pip install --no-cache-dir torchcrepe==0.0.20 ffmpeg-python typeguard==4.2.0 || \
-    (echo "Warning: infer-rvc-python installation failed, continuing..." && exit 0)
+    pip install --no-cache-dir torchcrepe==0.0.20 ffmpeg-python typeguard==4.2.0
 
 # Download RVC model files to Network Volume path
 RUN mkdir -p /runpod-volume/models/RVC && \
