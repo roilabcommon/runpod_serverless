@@ -176,7 +176,8 @@ RUN pip install --no-cache-dir --no-deps infer-rvc-python && \
     pip install --no-cache-dir torchcrepe==0.0.20 ffmpeg-python typeguard==4.2.0
 
 # faiss-gpu is compiled against numpy 1.x; force downgrade to avoid _ARRAY_API error
-RUN pip install --no-cache-dir "numpy<2"
+# onnxruntime-gpu is required by audio_separator at runtime
+RUN pip install --no-cache-dir "numpy<2" onnxruntime-gpu
 
 # Download RVC model files to Network Volume path
 RUN mkdir -p /runpod-volume/models/RVC && \
