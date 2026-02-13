@@ -159,14 +159,16 @@ RUN pip install --no-cache-dir \
     psutil \
     py-cpuinfo
 
-# Install fairseq from source (non-editable so /tmp can be cleaned up)
-# PyPI fairseq requires omegaconf<2.1 which is rejected by pip 24.1+
+# Install fairseq from source
+# pip 24.1+ rejects omegaconf<2.1 metadata, so temporarily downgrade pip for this step
 RUN echo "Installing fairseq from source..." && \
+    pip install --no-cache-dir "pip<24.1" && \
     git clone --depth 1 --branch v0.12.2 https://github.com/pytorch/fairseq.git /tmp/fairseq && \
     cd /tmp/fairseq && \
     pip install --no-cache-dir . && \
     cd /app/RVC && \
-    rm -rf /tmp/fairseq
+    rm -rf /tmp/fairseq && \
+    pip install --no-cache-dir --upgrade pip
 
 # Install infer-rvc-python with --no-deps to avoid fairseq/omegaconf dependency conflict
 # fairseq is already installed from source above; remaining deps installed manually
