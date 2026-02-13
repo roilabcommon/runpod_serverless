@@ -168,8 +168,10 @@ RUN echo "Installing fairseq from source..." && \
     cd /app/RVC && \
     rm -rf /tmp/fairseq
 
-# Install infer-rvc-python (may have specific dependency requirements)
-RUN pip install --no-cache-dir infer-rvc-python || \
+# Install infer-rvc-python with --no-deps to avoid fairseq/omegaconf dependency conflict
+# (pip 24.1+ rejects omegaconf<2.1 due to invalid metadata, but fairseq is already installed from source)
+RUN pip install --no-cache-dir --no-deps infer-rvc-python && \
+    pip install --no-cache-dir torchcrepe==0.0.20 ffmpeg-python typeguard==4.2.0 || \
     (echo "Warning: infer-rvc-python installation failed, continuing..." && exit 0)
 
 # Download RVC model files to Network Volume path
