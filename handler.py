@@ -33,10 +33,13 @@ logger = logging.getLogger(__name__)
 # Get application root directory
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 TTS_DIR = os.path.join(APP_ROOT, 'TTS')
+RVC_DIR = os.path.join(APP_ROOT, 'RVC')
 
-# Add TTS directory to Python path ONCE at module load
+# Add TTS and RVC directories to Python path ONCE at module load
 if TTS_DIR not in sys.path:
     sys.path.insert(0, TTS_DIR)
+if RVC_DIR not in sys.path:
+    sys.path.insert(0, RVC_DIR)
 
 # Pre-import model classes to avoid lazy loading
 # These will be imported when the module loads, not when initialize_models() is called
@@ -77,11 +80,25 @@ except Exception as e:
 # Restore directory after imports
 os.chdir(original_cwd)
 
+# Import RVC (does not need TTS directory context)
+RVCClass = None
+_rvc_import_error = None
+try:
+    from RVC import RVC as RVCClass
+    logger.info("✓ RVC class loaded")
+except Exception as e:
+    import traceback
+    _rvc_import_error = traceback.format_exc()
+    logger.warning(f"⚠ RVC class not available: {e}")
+    logger.warning(f"⚠ RVC traceback: {_rvc_import_error}")
+
 # ===== GLOBAL MODEL INSTANCES =====
 # Models are loaded once at container startup and reused for all requests
 vibevoice_model = None
 spark_model = None
+rvc_model = None
 _spark_init_error = None  # Store Spark init error for debug
+_rvc_init_error = None  # Store RVC init error for debug
 
 # ===== HELPER FUNCTIONS =====
 
@@ -169,10 +186,10 @@ def initialize_models() -> None:
     Models are loaded from Network Volume (primary) or downloaded from HuggingFace Hub.
     Docker embedded models are used as fallback only.
     """
-    global vibevoice_model, spark_model
+    global vibevoice_model, spark_model, rvc_model
 
     logger.info("=" * 50)
-    logger.info("Initializing TTS models...")
+    logger.info("Initializing models...")
     logger.info("=" * 50)
 
     # Log volume status
@@ -238,9 +255,26 @@ def initialize_models() -> None:
             _spark_init_error = f"SparkModel class={SparkModel is not None}, path={spark_model_path}"
             logger.warning(f"SparkModel class or model path not available: {_spark_init_error}")
 
+        # Initialize RVC model
+        global _rvc_init_error
+        if RVCClass is not None:
+            try:
+                logger.info("Loading RVC model...")
+                rvc_model = RVCClass()
+                logger.info("RVC model loaded successfully")
+            except Exception as e:
+                import traceback
+                _rvc_init_error = traceback.format_exc()
+                logger.error(f"RVC model failed: {e}")
+                logger.error(f"RVC model traceback: {_rvc_init_error}")
+                rvc_model = None
+        else:
+            _rvc_init_error = f"RVC class not available (import error: {_rvc_import_error})"
+            logger.warning(f"RVC class not available: {_rvc_init_error}")
+
         # Verify at least one model loaded
-        if vibevoice_model is None and spark_model is None:
-            raise RuntimeError("No TTS models could be loaded!")
+        if vibevoice_model is None and spark_model is None and rvc_model is None:
+            raise RuntimeError("No models could be loaded!")
 
         logger.info("=" * 50)
         logger.info("Model initialization complete")
@@ -248,6 +282,7 @@ def initialize_models() -> None:
                     f" (path: {vibevoice_model_path})")
         logger.info(f"   Spark: {'loaded' if spark_model else 'unavailable'}"
                     f" (path: {spark_model_path})")
+        logger.info(f"   RVC: {'loaded' if rvc_model else 'unavailable'}")
         logger.info(f"   Source: {'Network Volume' if volume_path else 'Docker embedded'}")
         logger.info("=" * 50)
 
@@ -301,6 +336,10 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 "spark_class_available": SparkModel is not None,
                 "spark_import_error": _spark_import_error,
                 "spark_init_error": _spark_init_error,
+                "rvc_loaded": rvc_model is not None,
+                "rvc_class_available": RVCClass is not None,
+                "rvc_import_error": _rvc_import_error,
+                "rvc_init_error": _rvc_init_error,
                 "tts_dir": TTS_DIR,
                 "tts_dir_contents": os.listdir(TTS_DIR) if os.path.isdir(TTS_DIR) else "NOT FOUND",
                 "cli_dir_exists": os.path.isdir(os.path.join(TTS_DIR, "cli")),
@@ -320,6 +359,57 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
             return debug_info
 
+        # Get model type first (affects validation)
+        model_type = job_input.get("model_type", "vibevoice").lower()
+
+        # --- RVC branch (no text required) ---
+        if model_type == "rvc":
+            if rvc_model is None:
+                return {"error": "RVC model is not available"}
+
+            audio_input = job_input.get("audio")
+            if not audio_input:
+                return {"error": "Missing required parameter: audio"}
+
+            character = job_input.get("character", "Poli")
+            language = job_input.get("language", "KR")
+            pitch_level = job_input.get("pitch_level", 0)
+
+            logger.info(f"Request: model=rvc, character={character}, language={language}, pitch={pitch_level}")
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                input_audio_path = os.path.join(temp_dir, "input.wav")
+
+                if audio_input.startswith(("http://", "https://")):
+                    if not download_audio_from_url(audio_input, input_audio_path):
+                        return {"error": "Failed to download input audio"}
+                else:
+                    if not decode_base64_audio(audio_input, input_audio_path):
+                        return {"error": "Failed to decode input audio"}
+
+                try:
+                    result_path = rvc_model.run_rvc(character, language, [input_audio_path], pitch_level)
+                    if result_path is None or not os.path.exists(result_path):
+                        return {"error": "RVC conversion failed"}
+
+                    audio_base64 = encode_audio_to_base64(result_path)
+                    if audio_base64 is None:
+                        return {"error": "Failed to encode RVC output audio"}
+                except Exception as e:
+                    logger.error(f"RVC inference error: {e}", exc_info=True)
+                    return {"error": f"RVC inference error: {str(e)}"}
+
+            logger.info("RVC conversion completed")
+
+            return {
+                "audio": audio_base64,
+                "model_used": "rvc",
+                "character": character,
+                "language": language,
+                "pitch_level": pitch_level,
+            }
+
+        # --- TTS branch (vibevoice / spark) ---
         # Validate inputs
         text = job_input.get("text")
         prompt_speech = job_input.get("prompt_speech")
@@ -329,8 +419,6 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         if not prompt_speech:
             return {"error": "Missing required parameter: prompt_speech"}
 
-        # Get parameters
-        model_type = job_input.get("model_type", "vibevoice").lower()
         cfg_scale = job_input.get("cfg_scale", 2.0)
 
         logger.info(f"Request: model={model_type}, text_len={len(text)}")
@@ -345,7 +433,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 return {"error": "Spark model is not available"}
             selected_model = spark_model
         else:
-            return {"error": f"Invalid model_type: {model_type}"}
+            return {"error": f"Invalid model_type: {model_type}. Supported: vibevoice, spark, rvc"}
 
         # Process with temporary directory
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -395,7 +483,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
             finally:
                 os.chdir(current_dir)
 
-            logger.info("✅ TTS completed")
+            logger.info("TTS completed")
 
             return {
                 "audio": audio_base64,
