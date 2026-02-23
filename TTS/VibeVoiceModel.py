@@ -145,18 +145,18 @@ class VibeVoiceModel:
         char_count = len(text.strip())
 
         # Estimate speech duration (conservative: slower speaking rate)
-        estimated_seconds = max(char_count / 3.0, 1.5)  # at least 1.5 seconds
-        # ~7.5 diffusion tokens per second + 2.5x safety margin for pauses/prosody
-        estimated_tokens = int(estimated_seconds * 7.5 * 2.5)
+        estimated_seconds = max(char_count / 2.5, 2.0)  # at least 2 seconds
+        # ~7.5 diffusion tokens per second + 4x safety margin for pauses/prosody/trailing
+        estimated_tokens = int(estimated_seconds * 7.5 * 4)
         # Add overhead for speech_start, speech_end, eos tokens
-        estimated_tokens += 15
-        # Minimum 30 tokens to avoid cutting off very short utterances
-        return max(estimated_tokens, 30)
+        estimated_tokens += 20
+        # Minimum 50 tokens to avoid cutting off short utterances
+        return max(estimated_tokens, 50)
 
     def _trim_trailing_silence(self, audio: np.ndarray, sr: int = 24000,
-                               threshold_db: float = -40.0,
+                               threshold_db: float = -50.0,
                                frame_ms: int = 50,
-                               min_silence_ms: int = 500) -> np.ndarray:
+                               min_silence_ms: int = 800) -> np.ndarray:
         """
         Trim trailing silence or low-energy noise/music from generated audio.
 
@@ -234,7 +234,7 @@ class VibeVoiceModel:
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_tokens,
-                max_length_times=1.0,
+                max_length_times=1.5,
                 cfg_scale=effective_cfg,
                 inference_steps=self.inference_steps,
                 tokenizer=self.processor.tokenizer,
