@@ -139,6 +139,37 @@ def encode_audio_to_base64(audio_path: str) -> Optional[str]:
         return None
 
 
+def resolve_preset_audio_path(character: str, language: str) -> Optional[str]:
+    """
+    Resolve reference audio path for preset characters from Network Volume.
+
+    Looks for audio files at: {VOLUME_PATH}/InputAudio/{language}/{character}.{ext}
+    Supported extensions: .mp3, .wav, .flac, .ogg
+
+    Returns the full path if found, None otherwise.
+    """
+    from model_cache import get_volume_path
+    volume_path = get_volume_path()
+    if volume_path is None:
+        logger.error("No network volume available for preset audio lookup")
+        return None
+
+    audio_dir = os.path.join(volume_path, "InputAudio", language)
+    if not os.path.isdir(audio_dir):
+        logger.error(f"Preset audio directory not found: {audio_dir}")
+        return None
+
+    # Try common audio extensions
+    for ext in (".mp3", ".wav", ".flac", ".ogg"):
+        audio_path = os.path.join(audio_dir, f"{character}{ext}")
+        if os.path.isfile(audio_path):
+            logger.info(f"Preset audio found: {audio_path}")
+            return audio_path
+
+    logger.error(f"No preset audio file found for character='{character}', language='{language}' in {audio_dir}")
+    return None
+
+
 def encode_numpy_audio_to_base64(audio_array: Any, sample_rate: int) -> Optional[str]:
     """Encode numpy/torch audio array to base64 string."""
     try:
@@ -300,7 +331,18 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     This function is called for EACH request.
     Models are already loaded, so this should be fast.
 
-    Input:
+    Input (Preset mode - uses reference audio from Network Volume):
+    {
+        "input": {
+            "text": str,
+            "character": str,
+            "language": str,
+            "model_type": str ("vibevoice" or "spark"),
+            "cfg_scale": float (optional, for VibeVoice)
+        }
+    }
+
+    Input (Custom mode - client uploads reference audio):
     {
         "input": {
             "text": str,
@@ -413,15 +455,20 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         # Validate inputs
         text = job_input.get("text")
         prompt_speech = job_input.get("prompt_speech")
+        character = job_input.get("character")
+        language = job_input.get("language")
 
         if not text:
             return {"error": "Missing required parameter: text"}
-        if not prompt_speech:
-            return {"error": "Missing required parameter: prompt_speech"}
+
+        # Determine audio source: preset (character+language) or custom (prompt_speech)
+        if not prompt_speech and not (character and language):
+            return {"error": "Either 'prompt_speech' (custom) or 'character'+'language' (preset) must be provided"}
 
         cfg_scale = job_input.get("cfg_scale", 2.0)
 
-        logger.info(f"Request: model={model_type}, text_len={len(text)}")
+        logger.info(f"Request: model={model_type}, text_len={len(text)}, "
+                    f"mode={'preset' if character and language and not prompt_speech else 'custom'}")
 
         # Select model
         if model_type == "vibevoice":
@@ -438,14 +485,21 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         # Process with temporary directory
         with tempfile.TemporaryDirectory() as temp_dir:
             # Handle prompt audio
-            prompt_audio_path = os.path.join(temp_dir, "prompt.wav")
-
-            if prompt_speech.startswith(("http://", "https://")):
-                if not download_audio_from_url(prompt_speech, prompt_audio_path):
-                    return {"error": "Failed to download prompt audio"}
+            if prompt_speech:
+                # Custom mode: audio provided by client (base64 or URL)
+                prompt_audio_path = os.path.join(temp_dir, "prompt.wav")
+                if prompt_speech.startswith(("http://", "https://")):
+                    if not download_audio_from_url(prompt_speech, prompt_audio_path):
+                        return {"error": "Failed to download prompt audio"}
+                else:
+                    if not decode_base64_audio(prompt_speech, prompt_audio_path):
+                        return {"error": "Failed to decode prompt audio"}
             else:
-                if not decode_base64_audio(prompt_speech, prompt_audio_path):
-                    return {"error": "Failed to decode prompt audio"}
+                # Preset mode: resolve audio from Network Volume
+                prompt_audio_path = resolve_preset_audio_path(character, language)
+                if prompt_audio_path is None:
+                    return {"error": f"Preset audio not found for character='{character}', language='{language}'. "
+                                     f"Expected at: InputAudio/{language}/{character}.[mp3|wav|flac|ogg]"}
 
             # Run TTS (directory change needed for model inference)
             current_dir = os.getcwd()
