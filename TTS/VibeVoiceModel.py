@@ -134,6 +134,24 @@ class VibeVoiceModel:
             print(f"Error reading audio {audio_path}: {e}")
             return np.array([]), 0    
 
+    def _estimate_max_tokens(self, text: str) -> int:
+        """
+        Estimate max_new_tokens based on text length.
+
+        Heuristic: ~75 tokens per second of audio at 24kHz,
+        average speaking rate ~4 chars/sec (Korean) or ~15 chars/sec (English).
+        We use a conservative estimate and add padding for silence/prosody.
+        """
+        char_count = len(text.strip())
+
+        # Estimate audio duration: ~3-5 chars per second for Korean,
+        # add generous multiplier for safety
+        estimated_seconds = max(char_count / 3.0, 2.0)  # at least 2 seconds
+        # ~75 generation tokens per second of audio + 50% safety margin
+        estimated_tokens = int(estimated_seconds * 75 * 1.5)
+        # Clamp to reasonable bounds
+        return max(estimated_tokens, 300)  # at least 300 tokens
+
     def run_tts(
         self,
         text,
@@ -157,7 +175,12 @@ class VibeVoiceModel:
                 speaker_id = len(formatted_script_lines)
                 formatted_script_lines.append(f"Speaker {speaker_id}: {line}")
 
-        formatted_script = '\n'.join(formatted_script_lines) 
+        formatted_script = '\n'.join(formatted_script_lines)
+
+        # Estimate max tokens to prevent over-generation on short text
+        max_tokens = self._estimate_max_tokens(formatted_script)
+        print(f"📏 Text length: {len(formatted_script)} chars, max_new_tokens: {max_tokens}")
+
         inputs = self.processor(
             text=[formatted_script],
             voice_samples=[voice_sample],
@@ -168,7 +191,8 @@ class VibeVoiceModel:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=None,
+                max_new_tokens=max_tokens,
+                max_length_times=1.5,
                 cfg_scale=cfg_scale,
                 inference_steps=self.inference_steps,
                 tokenizer=self.processor.tokenizer,
