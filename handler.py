@@ -15,10 +15,12 @@ import os
 import sys
 import base64
 import tempfile
+import time
 import soundfile as sf
 import numpy as np
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, Tuple, Dict, Any
 from model_cache import resolve_model_path
 
@@ -210,18 +212,69 @@ def encode_numpy_audio_to_base64(audio_array: Any, sample_rate: int) -> Optional
 
 # ===== MODEL INITIALIZATION =====
 
+def _cuda_warmup() -> None:
+    """Pre-initialize CUDA context before model loading.
+    First CUDA operation triggers runtime init (~2-3s). Doing this once up front
+    avoids the penalty being added to the first model's load time.
+    """
+    if torch.cuda.is_available():
+        logger.info("CUDA warmup: initializing context...")
+        t0 = time.perf_counter()
+        torch.cuda.init()
+        _ = torch.zeros(1, device="cuda")
+        torch.cuda.synchronize()
+        logger.info(f"CUDA warmup done in {time.perf_counter() - t0:.2f}s "
+                    f"(device: {torch.cuda.get_device_name(0)})")
+
+
+def _load_vibevoice(model_path: str):
+    """Load VibeVoice model (thread target)."""
+    t0 = time.perf_counter()
+    logger.info("Loading VibeVoice model...")
+    model = VibeVoiceModel(model_path=model_path)
+    logger.info(f"VibeVoice model loaded in {time.perf_counter() - t0:.1f}s")
+    return model
+
+
+def _load_spark(model_path: str):
+    """Load Spark model (thread target)."""
+    t0 = time.perf_counter()
+    logger.info(f"Loading Spark model from: {model_path}")
+    model = SparkModel(model_dir=model_path)
+    logger.info(f"Spark model loaded in {time.perf_counter() - t0:.1f}s")
+    return model
+
+
+def _load_rvc():
+    """Load RVC model (thread target)."""
+    t0 = time.perf_counter()
+    logger.info("Loading RVC model...")
+    model = RVCClass()
+    logger.info(f"RVC model loaded in {time.perf_counter() - t0:.1f}s")
+    return model
+
+
 def initialize_models() -> None:
     """
-    Initialize TTS models at startup.
+    Initialize TTS models at startup using parallel loading.
     This function is called ONCE when the container starts.
     Models are loaded from Network Volume (primary) or downloaded from HuggingFace Hub.
     Docker embedded models are used as fallback only.
+
+    Uses ThreadPoolExecutor to load models concurrently — total time equals
+    the slowest model rather than the sum of all models.
     """
     global vibevoice_model, spark_model, rvc_model
+    global _spark_init_error, _rvc_init_error
+
+    total_t0 = time.perf_counter()
 
     logger.info("=" * 50)
-    logger.info("Initializing models...")
+    logger.info("Initializing models (parallel loading)...")
     logger.info("=" * 50)
+
+    # CUDA warmup: initialize context before any model loading
+    _cuda_warmup()
 
     # Log volume status
     from model_cache import get_volume_path
@@ -254,61 +307,53 @@ def initialize_models() -> None:
         except Exception as e:
             logger.warning(f"Spark model path not resolved: {e}")
 
-        # Initialize VibeVoice model
-        if VibeVoiceModel is not None and vibevoice_model_path is not None:
-            try:
-                logger.info("Loading VibeVoice model...")
-                vibevoice_model = VibeVoiceModel(model_path=vibevoice_model_path)
-                logger.info("VibeVoice model loaded")
-            except Exception as e:
-                logger.error(f"VibeVoice model failed: {e}")
-                vibevoice_model = None
-        else:
-            logger.warning("VibeVoiceModel class or model path not available")
+        # --- Parallel model loading ---
+        futures = {}
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            if VibeVoiceModel is not None and vibevoice_model_path is not None:
+                futures["vibevoice"] = executor.submit(_load_vibevoice, vibevoice_model_path)
+            else:
+                logger.warning("VibeVoiceModel class or model path not available")
 
-        # Initialize Spark model
-        global _spark_init_error
-        if SparkModel is not None and spark_model_path is not None:
-            try:
-                logger.info(f"Loading Spark model from: {spark_model_path}")
-                logger.info(f"Spark model dir exists: {os.path.isdir(spark_model_path)}")
-                if os.path.isdir(spark_model_path):
-                    logger.info(f"Spark model dir contents: {os.listdir(spark_model_path)}")
-                spark_model = SparkModel(model_dir=spark_model_path)
-                logger.info("Spark model loaded successfully")
-            except Exception as e:
-                import traceback
-                _spark_init_error = traceback.format_exc()
-                logger.error(f"Spark model failed: {e}")
-                logger.error(f"Spark model traceback: {_spark_init_error}")
-                spark_model = None
-        else:
-            _spark_init_error = f"SparkModel class={SparkModel is not None}, path={spark_model_path}"
-            logger.warning(f"SparkModel class or model path not available: {_spark_init_error}")
+            if SparkModel is not None and spark_model_path is not None:
+                futures["spark"] = executor.submit(_load_spark, spark_model_path)
+            else:
+                _spark_init_error = f"SparkModel class={SparkModel is not None}, path={spark_model_path}"
+                logger.warning(f"SparkModel class or model path not available: {_spark_init_error}")
 
-        # Initialize RVC model
-        global _rvc_init_error
-        if RVCClass is not None:
-            try:
-                logger.info("Loading RVC model...")
-                rvc_model = RVCClass()
-                logger.info("RVC model loaded successfully")
-            except Exception as e:
-                import traceback
-                _rvc_init_error = traceback.format_exc()
-                logger.error(f"RVC model failed: {e}")
-                logger.error(f"RVC model traceback: {_rvc_init_error}")
-                rvc_model = None
-        else:
-            _rvc_init_error = f"RVC class not available (import error: {_rvc_import_error})"
-            logger.warning(f"RVC class not available: {_rvc_init_error}")
+            if RVCClass is not None:
+                futures["rvc"] = executor.submit(_load_rvc)
+            else:
+                _rvc_init_error = f"RVC class not available (import error: {_rvc_import_error})"
+                logger.warning(f"RVC class not available: {_rvc_init_error}")
+
+            # Collect results
+            for name, future in futures.items():
+                try:
+                    result = future.result()
+                    if name == "vibevoice":
+                        vibevoice_model = result
+                    elif name == "spark":
+                        spark_model = result
+                    elif name == "rvc":
+                        rvc_model = result
+                except Exception as e:
+                    import traceback
+                    tb = traceback.format_exc()
+                    logger.error(f"{name} model failed: {e}")
+                    logger.error(f"{name} model traceback: {tb}")
+                    if name == "spark":
+                        _spark_init_error = tb
+                    elif name == "rvc":
+                        _rvc_init_error = tb
 
         # Verify at least one model loaded
         if vibevoice_model is None and spark_model is None and rvc_model is None:
             raise RuntimeError("No models could be loaded!")
 
+        total_elapsed = time.perf_counter() - total_t0
         logger.info("=" * 50)
-        logger.info("Model initialization complete")
+        logger.info(f"Model initialization complete in {total_elapsed:.1f}s")
         logger.info(f"   VibeVoice: {'loaded' if vibevoice_model else 'unavailable'}"
                     f" (path: {vibevoice_model_path})")
         logger.info(f"   Spark: {'loaded' if spark_model else 'unavailable'}"
@@ -501,41 +546,34 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     return {"error": f"Preset audio not found for character='{character}', language='{language}'. "
                                      f"Expected at: InputAudio/{language}/{character}.[mp3|wav|flac|ogg]"}
 
-            # Run TTS (directory change needed for model inference)
-            current_dir = os.getcwd()
-            try:
-                os.chdir(TTS_DIR)
+            # Run TTS inference (models use absolute paths, no chdir needed)
+            if model_type == "vibevoice":
+                result = selected_model.run_tts(
+                    text=text,
+                    prompt_speech=prompt_audio_path,
+                    cfg_scale=cfg_scale
+                )
+                if result is None:
+                    return {"error": "TTS generation failed"}
 
-                if model_type == "vibevoice":
-                    result = selected_model.run_tts(
-                        text=text,
-                        prompt_speech=prompt_audio_path,
-                        cfg_scale=cfg_scale
-                    )
-                    if result is None:
-                        return {"error": "TTS generation failed"}
+                audio_output, sample_rate = result
+                audio_base64 = encode_numpy_audio_to_base64(audio_output, sample_rate)
 
-                    audio_output, sample_rate = result
-                    audio_base64 = encode_numpy_audio_to_base64(audio_output, sample_rate)
+            elif model_type == "spark":
+                output_audio_path = os.path.join(temp_dir, "output.wav")
+                result = selected_model.run_tts(
+                    text=text,
+                    prompt_speech=prompt_audio_path,
+                    output_path=output_audio_path
+                )
+                if result is None:
+                    return {"error": "TTS generation failed"}
 
-                elif model_type == "spark":
-                    output_audio_path = os.path.join(temp_dir, "output.wav")
-                    result = selected_model.run_tts(
-                        text=text,
-                        prompt_speech=prompt_audio_path,
-                        output_path=output_audio_path
-                    )
-                    if result is None:
-                        return {"error": "TTS generation failed"}
+                _, sample_rate = result
+                audio_base64 = encode_audio_to_base64(output_audio_path)
 
-                    _, sample_rate = result
-                    audio_base64 = encode_audio_to_base64(output_audio_path)
-
-                if audio_base64 is None:
-                    return {"error": "Failed to encode audio output"}
-
-            finally:
-                os.chdir(current_dir)
+            if audio_base64 is None:
+                return {"error": "Failed to encode audio output"}
 
             logger.info("TTS completed")
 
