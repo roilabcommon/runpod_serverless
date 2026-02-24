@@ -44,10 +44,10 @@ WORKDIR /app
 COPY . /app/
 
 # Install base Python dependencies (torch 2.6 required by transformers 4.56+ for CVE-2025-32434)
-# torchvision intentionally omitted – not used by TTS/RVC, saves ~600MB
 RUN pip install --no-cache-dir \
     torch==2.6.0 \
     torchaudio==2.6.0 \
+    torchvision==0.21.0 \
     --index-url https://download.pytorch.org/whl/cu124
 
 # Install common dependencies
@@ -98,6 +98,7 @@ RUN echo "=================================" && \
 RUN pip install --no-cache-dir --force-reinstall \
     torch==2.6.0 \
     torchaudio==2.6.0 \
+    torchvision==0.21.0 \
     --index-url https://download.pytorch.org/whl/cu124 && \
     pip install --no-cache-dir --upgrade transformers==4.56.2
 
@@ -229,10 +230,6 @@ RUN echo "==================================" && \
     echo "RVC modules:" && \
     ls -la /app/RVC/ && \
     echo "=================================="
-
-# Pre-compile Python bytecode to speed up import time at startup
-RUN python -m compileall -q /app/ 2>/dev/null || true
-RUN python -m compileall -q /usr/local/lib/python3.10/ 2>/dev/null || true
 
 # Make entrypoint script executable
 RUN chmod +x /app/start.sh
