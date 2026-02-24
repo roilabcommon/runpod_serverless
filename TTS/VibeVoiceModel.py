@@ -134,6 +134,64 @@ class VibeVoiceModel:
             print(f"Error reading audio {audio_path}: {e}")
             return np.array([]), 0    
 
+    def _estimate_max_tokens(self, text: str) -> int:
+        """
+        Estimate max_new_tokens based on text length.
+
+        Each speech_diffusion_id token = 3200 audio samples at 24kHz = ~0.133 sec.
+        So 1 second of audio = ~7.5 diffusion tokens.
+        Korean speaking rate: ~3-4 chars/sec.
+        """
+        char_count = len(text.strip())
+
+        # Estimate speech duration (conservative: slower speaking rate)
+        estimated_seconds = max(char_count / 2.5, 2.0)  # at least 2 seconds
+        # ~7.5 diffusion tokens per second + 4x safety margin for pauses/prosody/trailing
+        estimated_tokens = int(estimated_seconds * 7.5 * 4)
+        # Add overhead for speech_start, speech_end, eos tokens
+        estimated_tokens += 20
+        # Minimum 50 tokens to avoid cutting off short utterances
+        return max(estimated_tokens, 50)
+
+    def _trim_trailing_silence(self, audio: np.ndarray, sr: int = 24000,
+                               threshold_db: float = -50.0,
+                               frame_ms: int = 50,
+                               min_silence_ms: int = 800) -> np.ndarray:
+        """
+        Trim trailing silence or low-energy noise/music from generated audio.
+
+        Finds the last frame with energy above threshold, then keeps audio
+        up to that point plus a short fade-out.
+        """
+        if len(audio) == 0:
+            return audio
+
+        frame_size = int(sr * frame_ms / 1000)
+        num_frames = len(audio) // frame_size
+
+        if num_frames == 0:
+            return audio
+
+        # Calculate RMS energy per frame
+        threshold_linear = 10 ** (threshold_db / 20)
+        last_active_frame = 0
+
+        for i in range(num_frames):
+            frame = audio[i * frame_size : (i + 1) * frame_size]
+            rms = np.sqrt(np.mean(frame ** 2))
+            if rms > threshold_linear:
+                last_active_frame = i
+
+        # Keep up to the last active frame + trailing margin
+        margin_frames = int(min_silence_ms / frame_ms)
+        end_frame = min(last_active_frame + margin_frames + 1, num_frames)
+        trimmed = audio[: end_frame * frame_size]
+
+        if len(trimmed) < len(audio):
+            print(f"Trimmed audio: {len(audio)/sr:.2f}s -> {len(trimmed)/sr:.2f}s")
+
+        return trimmed
+
     def run_tts(
         self,
         text,
@@ -142,6 +200,7 @@ class VibeVoiceModel:
     ):
         if prompt_speech is None:
             return None
+        
         voice_sample, sr = self.__read_audio(prompt_speech)
         lines = text.strip().split('\n')
         formatted_script_lines = []
@@ -157,7 +216,14 @@ class VibeVoiceModel:
                 speaker_id = len(formatted_script_lines)
                 formatted_script_lines.append(f"Speaker {speaker_id}: {line}")
 
-        formatted_script = '\n'.join(formatted_script_lines) 
+        formatted_script = '\n'.join(formatted_script_lines)
+
+        # Estimate max tokens to prevent over-generation on short text
+        max_tokens = self._estimate_max_tokens(formatted_script)
+        # Use higher cfg_scale for short text to keep generation faithful
+        effective_cfg = max(cfg_scale, 3.0) if len(formatted_script) < 30 else cfg_scale
+        print(f"Text length: {len(formatted_script)} chars, max_new_tokens: {max_tokens}, cfg_scale: {effective_cfg}")
+
         inputs = self.processor(
             text=[formatted_script],
             voice_samples=[voice_sample],
@@ -168,13 +234,27 @@ class VibeVoiceModel:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=None,
-                cfg_scale=cfg_scale,
+                max_new_tokens=max_tokens,
+                max_length_times=1.5,
+                cfg_scale=effective_cfg,
                 inference_steps=self.inference_steps,
                 tokenizer=self.processor.tokenizer,
                 generation_config={'do_sample': False},
                 verbose=True,
             )
-        print("✅ Generation successful!")
-        return outputs.speech_outputs[0], 24000
+
+        audio_output = outputs.speech_outputs[0]
+
+        # Post-process: trim trailing silence/noise/music
+        if hasattr(audio_output, 'cpu'):
+            audio_np = audio_output.cpu().numpy()
+        else:
+            audio_np = np.array(audio_output)
+        if len(audio_np.shape) > 1:
+            audio_np = audio_np.squeeze()
+
+        audio_np = self._trim_trailing_silence(audio_np, sr=24000)
+
+        print("Generation successful!")
+        return audio_np, 24000
 
