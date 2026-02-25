@@ -549,18 +549,21 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                     negative_model_kwargs['attention_mask'][sample_idx, :] = 0
                     negative_model_kwargs['attention_mask'][sample_idx, -1] = 1
                 # update past key values
-                # DynamicCache API changed in transformers 4.50+; key_cache/value_cache
-                # may not exist. Fall back to clearing cache if access fails.
-                try:
-                    for layer_idx, (k_cache, v_cache) in enumerate(zip(negative_model_kwargs['past_key_values'].key_cache,
-                                                                       negative_model_kwargs['past_key_values'].value_cache)):
-                        # Process each non-diffusion sample
-                        for sample_idx in diffusion_start_indices.tolist():
-                            # Shift cache for this sample
-                            k_cache[sample_idx, :, -1, :] = k_cache[sample_idx, :, 0, :].clone()
-                            v_cache[sample_idx, :, -1, :] = v_cache[sample_idx, :, 0, :].clone()
-                except AttributeError:
-                    negative_model_kwargs['past_key_values'] = None
+                # DynamicCache API differs across transformers versions:
+                # < 4.50: .key_cache / .value_cache attributes
+                # >= 4.50: access via __getitem__ returning (key, value) tuples
+                past_kv = negative_model_kwargs['past_key_values']
+                if hasattr(past_kv, 'key_cache'):
+                    key_caches, value_caches = past_kv.key_cache, past_kv.value_cache
+                else:
+                    key_caches = [past_kv[i][0] for i in range(len(past_kv))]
+                    value_caches = [past_kv[i][1] for i in range(len(past_kv))]
+                for layer_idx, (k_cache, v_cache) in enumerate(zip(key_caches, value_caches)):
+                    # Process each non-diffusion sample
+                    for sample_idx in diffusion_start_indices.tolist():
+                        # Shift cache for this sample
+                        k_cache[sample_idx, :, -1, :] = k_cache[sample_idx, :, 0, :].clone()
+                        v_cache[sample_idx, :, -1, :] = v_cache[sample_idx, :, 0, :].clone()
                 # update negative_input_ids
                 for sample_idx in diffusion_start_indices.tolist():
                     negative_input_ids[sample_idx, -1] = generation_config.speech_start_id
@@ -610,22 +613,23 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                         negative_model_kwargs['attention_mask'][sample_idx, start_idx] = 0
 
                     # 2. Update past_key_values
-                    # DynamicCache API changed in transformers 4.50+; key_cache/value_cache
-                    # may not exist. Fall back to clearing cache if access fails.
-                    try:
-                        kv_seq_len = negative_model_kwargs['past_key_values'].key_cache[0].shape[2]
-                        for layer_idx, (k_cache, v_cache) in enumerate(zip(negative_model_kwargs['past_key_values'].key_cache,
-                                                                         negative_model_kwargs['past_key_values'].value_cache)):
-                            for sample_idx, start_idx in zip(non_diffusion_indices.tolist(), start_indices.tolist()):
-                                # 💡--- Boundary Check ---💡
-                                if start_idx >= kv_seq_len:
-                                    continue
+                    # DynamicCache API differs across transformers versions
+                    past_kv = negative_model_kwargs['past_key_values']
+                    if hasattr(past_kv, 'key_cache'):
+                        key_caches, value_caches = past_kv.key_cache, past_kv.value_cache
+                    else:
+                        key_caches = [past_kv[i][0] for i in range(len(past_kv))]
+                        value_caches = [past_kv[i][1] for i in range(len(past_kv))]
+                    kv_seq_len = key_caches[0].shape[2]
+                    for layer_idx, (k_cache, v_cache) in enumerate(zip(key_caches, value_caches)):
+                        for sample_idx, start_idx in zip(non_diffusion_indices.tolist(), start_indices.tolist()):
+                            # 💡--- Boundary Check ---💡
+                            if start_idx >= kv_seq_len:
+                                continue
 
-                                if start_idx + 1 < k_cache.shape[2] - 1:
-                                    k_cache[sample_idx, :, start_idx+1:, :] = k_cache[sample_idx, :, start_idx:-1, :].clone()
-                                    v_cache[sample_idx, :, start_idx+1:, :] = v_cache[sample_idx, :, start_idx:-1, :].clone()
-                    except AttributeError:
-                        negative_model_kwargs['past_key_values'] = None
+                            if start_idx + 1 < k_cache.shape[2] - 1:
+                                k_cache[sample_idx, :, start_idx+1:, :] = k_cache[sample_idx, :, start_idx:-1, :].clone()
+                                v_cache[sample_idx, :, start_idx+1:, :] = v_cache[sample_idx, :, start_idx:-1, :].clone()
 
                     # 3. Update negative_input_ids
                     input_seq_len = negative_input_ids.shape[1]
