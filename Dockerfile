@@ -67,10 +67,17 @@ RUN pip install --no-cache-dir \
     runpod==1.7.5 \
     requests
 
+# Pin core packages: prevent subsequent pip installs from uninstalling/downgrading them
+RUN echo "torch==2.6.0" > /app/pip-constraints.txt && \
+    echo "torchaudio==2.6.0" >> /app/pip-constraints.txt && \
+    echo "transformers==4.56.2" >> /app/pip-constraints.txt
+ENV PIP_CONSTRAINT=/app/pip-constraints.txt
+
 # Install TTS dependencies
 WORKDIR /app/TTS
 
 # Clone and install SparkTTS (extract only necessary folders)
+# Use --no-deps to prevent SparkTTS from changing pinned packages
 RUN echo "=================================" && \
     echo "Installing SparkTTS..." && \
     echo "=================================" && \
@@ -78,8 +85,8 @@ RUN echo "=================================" && \
     if [ -d "/tmp/SparkTTS" ]; then \
         echo "SparkTTS cloned successfully" && \
         cd /tmp/SparkTTS && \
-        pip install --no-cache-dir -r requirements.txt 2>/dev/null || echo "Warning: SparkTTS requirements.txt not found or failed" && \
-        pip install --no-cache-dir -e . 2>/dev/null || echo "Warning: SparkTTS setup.py installation failed" && \
+        pip install --no-cache-dir --no-deps -r requirements.txt 2>/dev/null || echo "Warning: SparkTTS requirements.txt not found or failed" && \
+        pip install --no-cache-dir --no-deps -e . 2>/dev/null || echo "Warning: SparkTTS setup.py installation failed" && \
         echo "Extracting SparkTTS essential folders to /app/TTS..." && \
         mkdir -p /app/TTS/sparktts /app/TTS/src /app/TTS/cli /app/TTS/runtime && \
         [ -d "/tmp/SparkTTS/sparktts" ] && cp -r /tmp/SparkTTS/sparktts /app/TTS/ || echo "Warning: sparktts folder not found" && \
@@ -92,14 +99,6 @@ RUN echo "=================================" && \
     else \
         echo "Warning: SparkTTS clone failed, skipping..."; \
     fi
-
-# Reinstall torch/torchaudio/transformers to fix version conflicts from SparkTTS requirements
-# SparkTTS requirements.txt may change torchaudio version, causing libtorchaudio.so symbol mismatch
-RUN pip install --no-cache-dir --force-reinstall \
-    torch==2.6.0 \
-    torchaudio==2.6.0 \
-    --index-url https://download.pytorch.org/whl/cu124 && \
-    pip install --no-cache-dir --upgrade transformers==4.56.2
 
 # Create vibevoice directory for model downloads
 RUN mkdir -p /app/TTS/vibevoice
@@ -217,14 +216,10 @@ RUN mkdir -p /app/example/results
 # Set the working directory back to app root
 WORKDIR /app
 
-# Final: reinstall core ML stack AFTER all other pip installs.
-# fairseq, onnxruntime-gpu, and numpy<2 can corrupt package versions,
-# breaking transformers lazy imports (Wav2Vec2Model, modeling_utils).
-RUN pip install --no-cache-dir --force-reinstall \
-    torch==2.6.0 \
-    torchaudio==2.6.0 \
-    --index-url https://download.pytorch.org/whl/cu124
-RUN pip install --no-cache-dir --force-reinstall transformers==4.56.2 tokenizers huggingface-hub
+# Disable constraints for runtime (no longer needed after build)
+ENV PIP_CONSTRAINT=""
+
+# Ensure numpy<2 for faiss-gpu compatibility (not constrained above)
 RUN pip install --no-cache-dir "numpy<2"
 
 # Verify installations
@@ -235,7 +230,7 @@ RUN echo "==================================" && \
     python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}')" && \
     python -c "import transformers; print(f'Transformers: {transformers.__version__}')" && \
     (python -c "from transformers import Wav2Vec2Model, Wav2Vec2FeatureExtractor; print('Wav2Vec2: OK')" || echo "⚠ Wav2Vec2 import failed") && \
-    (python -c "from transformers import modeling_utils; print('modeling_utils: OK')" || echo "⚠ modeling_utils import failed") && \
+    (python -c "import transformers.modeling_utils; print('modeling_utils: OK')" || echo "⚠ modeling_utils import failed") && \
     echo "TTS modules:" && \
     ls -la /app/TTS/ && \
     echo "RVC modules:" && \
