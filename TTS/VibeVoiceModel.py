@@ -17,7 +17,7 @@ from vibevoice.modular.modeling_vibevoice_inference import VibeVoiceForCondition
 from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
 from vibevoice.modular.streamer import AudioStreamer
 from transformers.utils import logging
-from transformers import set_seed, BitsAndBytesConfig
+from transformers import set_seed
     
     
 def clear_memory():
@@ -59,14 +59,10 @@ class VibeVoiceModel:
         self.processor = VibeVoiceProcessor.from_pretrained(self.model_path)
         
         if self.device == "cuda":
-            print("📥 Loading model with 8-bit quantization to GPU...")
-            quantization_config = BitsAndBytesConfig(
-                load_in_8bit=True,
-                llm_int8_enable_fp32_cpu_offload=False,
-            )
+            print("📥 Loading model with float16 to GPU...")
             self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
                 self.model_path,
-                quantization_config=quantization_config,
+                torch_dtype=torch.float16,
                 device_map="cuda",
                 low_cpu_mem_usage=True,
             )
