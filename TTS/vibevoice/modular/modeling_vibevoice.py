@@ -11,7 +11,7 @@ from transformers.models.auto import AutoModel, AutoModelForCausalLM
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import CausalLMOutput, BaseModelOutputWithPast, ModelOutput
 from transformers.models.llama.modeling_llama import LlamaRMSNorm
-from transformers import modeling_utils
+import transformers.modeling_utils as modeling_utils
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.utils import logging

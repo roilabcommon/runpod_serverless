@@ -8,7 +8,7 @@ from transformers.models.auto import AutoModel, AutoModelForCausalLM
 
 from transformers.generation import GenerationMixin, GenerationConfig, LogitsProcessor, LogitsProcessorList, StoppingCriteriaList
 from transformers.modeling_outputs import BaseModelOutputWithPast, ModelOutput
-from transformers import modeling_utils
+import transformers.modeling_utils as modeling_utils
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.utils import logging
@@ -549,8 +549,16 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                     negative_model_kwargs['attention_mask'][sample_idx, :] = 0
                     negative_model_kwargs['attention_mask'][sample_idx, -1] = 1
                 # update past key values
-                for layer_idx, (k_cache, v_cache) in enumerate(zip(negative_model_kwargs['past_key_values'].key_cache, 
-                                                                   negative_model_kwargs['past_key_values'].value_cache)):
+                # DynamicCache API differs across transformers versions:
+                # < 4.50: .key_cache / .value_cache attributes
+                # >= 4.50: access via __getitem__ returning (key, value) tuples
+                past_kv = negative_model_kwargs['past_key_values']
+                if hasattr(past_kv, 'key_cache'):
+                    key_caches, value_caches = past_kv.key_cache, past_kv.value_cache
+                else:
+                    key_caches = [past_kv[i][0] for i in range(len(past_kv))]
+                    value_caches = [past_kv[i][1] for i in range(len(past_kv))]
+                for layer_idx, (k_cache, v_cache) in enumerate(zip(key_caches, value_caches)):
                     # Process each non-diffusion sample
                     for sample_idx in diffusion_start_indices.tolist():
                         # Shift cache for this sample
@@ -605,9 +613,15 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                         negative_model_kwargs['attention_mask'][sample_idx, start_idx] = 0
 
                     # 2. Update past_key_values
-                    kv_seq_len = negative_model_kwargs['past_key_values'].key_cache[0].shape[2]
-                    for layer_idx, (k_cache, v_cache) in enumerate(zip(negative_model_kwargs['past_key_values'].key_cache, 
-                                                                     negative_model_kwargs['past_key_values'].value_cache)):
+                    # DynamicCache API differs across transformers versions
+                    past_kv = negative_model_kwargs['past_key_values']
+                    if hasattr(past_kv, 'key_cache'):
+                        key_caches, value_caches = past_kv.key_cache, past_kv.value_cache
+                    else:
+                        key_caches = [past_kv[i][0] for i in range(len(past_kv))]
+                        value_caches = [past_kv[i][1] for i in range(len(past_kv))]
+                    kv_seq_len = key_caches[0].shape[2]
+                    for layer_idx, (k_cache, v_cache) in enumerate(zip(key_caches, value_caches)):
                         for sample_idx, start_idx in zip(non_diffusion_indices.tolist(), start_indices.tolist()):
                             # 💡--- Boundary Check ---💡
                             if start_idx >= kv_seq_len:
