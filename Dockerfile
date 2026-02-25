@@ -63,6 +63,7 @@ RUN pip install --no-cache-dir \
     scipy \
     tqdm \
     einops \
+    einx \
     huggingface-hub \
     runpod==1.7.5 \
     requests
