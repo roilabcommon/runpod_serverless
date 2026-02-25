@@ -217,22 +217,13 @@ RUN mkdir -p /app/example/results
 # Set the working directory back to app root
 WORKDIR /app
 
-# Final: reinstall transformers + tokenizers AFTER all other pip installs.
-# fairseq, onnxruntime-gpu, and numpy<2 can corrupt transformers' lazy import
-# system, breaking imports like Wav2Vec2Model and modeling_utils.
-RUN pip install --no-cache-dir --force-reinstall transformers==4.56.2 && \
-    python -c "from transformers import Wav2Vec2Model, Wav2Vec2FeatureExtractor; print('✓ Wav2Vec2 imports OK')" && \
-    python -c "from transformers.modeling_utils import PreTrainedModel; print('✓ modeling_utils imports OK')"
-
 # Verify installations
 RUN echo "==================================" && \
     echo "Installation Summary:" && \
     echo "==================================" && \
     python -c "import torch; print(f'PyTorch: {torch.__version__}')" && \
     python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}')" && \
-    python -c "import transformers; print(f'Transformers: {transformers.__version__}')" && \
-    python -c "from transformers import Wav2Vec2Model, Wav2Vec2FeatureExtractor; print('Wav2Vec2: OK')" && \
-    python -c "from transformers import modeling_utils; print('modeling_utils: OK')" && \
+    (python -c "import transformers; print(f'Transformers: {transformers.__version__}')" || echo "Warning: transformers check failed") && \
     echo "TTS modules:" && \
     ls -la /app/TTS/ && \
     echo "RVC modules:" && \

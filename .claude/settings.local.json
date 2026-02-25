@@ -3,16 +3,7 @@
     "allow": [
       "Bash(tree:*)",
       "Bash(find:*)",
-      "Bash(cd:*)",
-      "Bash(wc:*)",
-      "Bash(sort:*)",
-      "Bash(head:*)",
-      "Bash(git:*)",
-      "Bash(dir C:\\\\Users\\\\SOOHEN~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\B--runpod-serverless\\\\tasks:*)",
-      "WebSearch",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:pypi.org)",
-      "Bash(cmd:*)"
+      "Bash(cd:*)"
     ]
   }
 }
