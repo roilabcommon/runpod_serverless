@@ -31,7 +31,7 @@ def clear_memory():
 class VibeVoiceModel:
     def __init__(self, model_path=None):
         """
-        Initialize VibeVoice model optimized for 11GB VRAM using 4-bit quantization.
+        Initialize VibeVoice model optimized for 11GB VRAM using 8-bit quantization.
 
         Args:
             model_path: Path to model directory. If None, uses default
@@ -64,15 +64,12 @@ class VibeVoiceModel:
         self.processor = VibeVoiceProcessor.from_pretrained(self.model_path)
         
         if self.device == "cuda":
-            print("📥 Loading model with 4-bit quantization to GPU...")
-            print("💡 Using NF4 quantization (~4-5GB VRAM)")
-            
-            # 4-bit quantization config for 11GB VRAM
+            print("📥 Loading model with 8-bit quantization to GPU...")
+            print("💡 Using INT8 quantization (~7-8GB VRAM)")
+
+            # 8-bit quantization config for 11GB VRAM
             bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_use_double_quant=True,
+                load_in_8bit=True,
             )
             
             try:
@@ -87,7 +84,7 @@ class VibeVoiceModel:
                 print(f"📊 GPU Memory after loading: {allocated:.2f}GB")
                 
             except Exception as e:
-                print(f"⚠️ 4-bit loading failed: {e}")
+                print(f"⚠️ 8-bit loading failed: {e}")
                 print("📥 Falling back to CPU mode...")
                 self.device = "cpu"
                 self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
