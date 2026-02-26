@@ -30,6 +30,9 @@ def _patch_bicodec_tokenizer():
                     {k: v.to(self.device) for k, v in cpu_sd.items()},
                     strict=False,
                 )
+            # Ensure float32: mel spectrogram transforms require float32 input
+            # and to_empty() or checkpoint weights may leave buffers in float16
+            self.model.float()
 
             self.processor = Wav2Vec2FeatureExtractor.from_pretrained(
                 f"{self.model_dir}/wav2vec2-large-xlsr-53"
