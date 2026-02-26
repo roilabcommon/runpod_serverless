@@ -117,13 +117,18 @@ class VibeVoiceModel:
         char_count = len(text.strip())
 
         # Estimate speech duration (conservative: slower speaking rate)
-        estimated_seconds = max(char_count / 2.5, 2.0)  # at least 2 seconds
-        # ~7.5 diffusion tokens per second + 4x safety margin for pauses/prosody/trailing
-        estimated_tokens = int(estimated_seconds * 7.5 * 4)
+        estimated_seconds = max(char_count / 2.5, 1.5)
+        # Use tighter safety margin for short text to prevent music/noise fill
+        if char_count < 15:
+            margin = 1.5
+        elif char_count < 40:
+            margin = 2.0
+        else:
+            margin = 3.0
+        estimated_tokens = int(estimated_seconds * 7.5 * margin)
         # Add overhead for speech_start, speech_end, eos tokens
-        estimated_tokens += 20
-        # Minimum 50 tokens to avoid cutting off short utterances
-        return max(estimated_tokens, 50)
+        estimated_tokens += 10
+        return max(estimated_tokens, 20)
 
     def _trim_trailing_silence(self, audio: np.ndarray, sr: int = 24000,
                                threshold_db: float = -50.0,
@@ -192,8 +197,13 @@ class VibeVoiceModel:
 
         # Estimate max tokens to prevent over-generation on short text
         max_tokens = self._estimate_max_tokens(formatted_script)
-        # Use higher cfg_scale for short text to keep generation faithful
-        effective_cfg = max(cfg_scale, 3.0) if len(formatted_script) < 30 else cfg_scale
+        # Use higher cfg_scale for short text to keep generation faithful to speech
+        if len(formatted_script) < 20:
+            effective_cfg = max(cfg_scale, 5.0)
+        elif len(formatted_script) < 40:
+            effective_cfg = max(cfg_scale, 3.5)
+        else:
+            effective_cfg = cfg_scale
         print(f"Text length: {len(formatted_script)} chars, max_new_tokens: {max_tokens}, cfg_scale: {effective_cfg}")
 
         inputs = self.processor(

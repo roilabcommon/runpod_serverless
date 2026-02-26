@@ -19,19 +19,26 @@ def _patch_bicodec_tokenizer():
 
         def _safe_initialize_model(self):
             model = BiCodec.load_from_checkpoint(f"{self.model_dir}/BiCodec")
-            cpu_sd = {k: v for k, v in model.state_dict().items()
-                      if v.device.type != "meta"}
             try:
                 self.model = model.to(self.device)
             except NotImplementedError:
-                logging.info("BiCodec meta tensor fallback: using to_empty()")
-                self.model = model.to_empty(device=self.device)
-                self.model.load_state_dict(
-                    {k: v.to(self.device) for k, v in cpu_sd.items()},
-                    strict=False,
-                )
-            # Ensure float32: mel spectrogram transforms require float32 input
-            # and to_empty() or checkpoint weights may leave buffers in float16
+                # Only replace meta tensors (no real data) with empty CPU tensors
+                # so that .to(device) can proceed. All real weights are preserved.
+                logging.info("BiCodec has meta tensors, replacing before device transfer")
+                for module in model.modules():
+                    for name, param in list(module._parameters.items()):
+                        if param is not None and param.device.type == "meta":
+                            module._parameters[name] = torch.nn.Parameter(
+                                torch.empty(param.shape, dtype=param.dtype),
+                                requires_grad=param.requires_grad,
+                            )
+                    for name, buf in list(module._buffers.items()):
+                        if buf is not None and buf.device.type == "meta":
+                            module._buffers[name] = torch.empty(
+                                buf.shape, dtype=buf.dtype
+                            )
+                self.model = model.to(self.device)
+            # Ensure float32: mel spectrogram expects float32 audio input
             self.model.float()
 
             self.processor = Wav2Vec2FeatureExtractor.from_pretrained(
