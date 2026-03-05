@@ -65,7 +65,7 @@ class VibeVoiceModel:
                 torch_dtype=torch.float16,
                 device_map="auto",
                 low_cpu_mem_usage=True,
-                attn_implementation="flash_attention_2",
+                attn_implementation="sdpa",
             )
             allocated = torch.cuda.memory_allocated() / 1024**3
             print(f"📊 GPU Memory after loading: {allocated:.2f}GB")

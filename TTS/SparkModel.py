@@ -40,6 +40,20 @@ def _patch_bicodec_tokenizer():
                 self.model = model.to(self.device)
             # Ensure float32: mel spectrogram expects float32 audio input
             self.model.float()
+            # Re-register spectrogram window buffers that were lost as meta tensors
+            for module in self.model.modules():
+                cls_name = type(module).__name__
+                if hasattr(module, 'spectrogram') and hasattr(module.spectrogram, 'window'):
+                    spec = module.spectrogram
+                    if spec.window is None or spec.window.numel() == 0:
+                        n_fft = spec.n_fft if hasattr(spec, 'n_fft') else spec.window.shape[0]
+                        spec.register_buffer('window', torch.hann_window(n_fft, device=self.device))
+                        logging.info(f"Re-registered spectrogram.window for {cls_name}")
+                elif cls_name in ('MelSpectrogram', 'Spectrogram') and hasattr(module, 'window'):
+                    if module.window is None or module.window.numel() == 0:
+                        n_fft = module.n_fft if hasattr(module, 'n_fft') else module.win_length
+                        module.register_buffer('window', torch.hann_window(n_fft, device=self.device))
+                        logging.info(f"Re-registered window for {cls_name}")
 
             self.processor = Wav2Vec2FeatureExtractor.from_pretrained(
                 f"{self.model_dir}/wav2vec2-large-xlsr-53"
