@@ -63,7 +63,7 @@ class VibeVoiceModel:
             self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
                 self.model_path,
                 torch_dtype=torch.float16,
-                device_map="cuda",
+                device_map="auto",
                 low_cpu_mem_usage=True,
             )
             allocated = torch.cuda.memory_allocated() / 1024**3
