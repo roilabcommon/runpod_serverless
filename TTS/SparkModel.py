@@ -56,6 +56,30 @@ def _patch_bicodec_tokenizer():
 
 _patch_bicodec_tokenizer()
 
+
+# Patch detokenize to cast token indices to long (int64).
+# einx's take() requires long tensors but SparkTTS may produce int32 tokens.
+def _patch_detokenize_dtype():
+    try:
+        from sparktts.models.audio_tokenizer import BiCodecTokenizer
+
+        _orig_detokenize = BiCodecTokenizer.detokenize
+
+        def _safe_detokenize(self, *args, **kwargs):
+            args = tuple(
+                a.long() if isinstance(a, torch.Tensor) and a.dtype == torch.int32 else a
+                for a in args
+            )
+            return _orig_detokenize(self, *args, **kwargs)
+
+        BiCodecTokenizer.detokenize = _safe_detokenize
+        logging.info("Patched BiCodecTokenizer.detokenize for int64 token indices")
+    except ImportError:
+        logging.warning("SparkTTS modules not found, skipping detokenize patch")
+
+_patch_detokenize_dtype()
+
+
 from cli.SparkTTS import SparkTTS
 
 class SparkModel:
