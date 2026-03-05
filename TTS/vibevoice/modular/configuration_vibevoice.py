@@ -191,8 +191,8 @@ class VibeVoiceConfig(PretrainedConfig):
         **kwargs
     ):
 
-        # kwargs["_attn_implementation"] = "flash_attention_2"
-        kwargs["_attn_implementation_autoset"] = False 
+        kwargs["_attn_implementation"] = "sdpa"
+        kwargs["_attn_implementation_autoset"] = False
 
         if acoustic_tokenizer_config is None:
             self.acoustic_tokenizer_config = self.sub_configs["acoustic_tokenizer_config"]()
