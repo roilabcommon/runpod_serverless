@@ -65,6 +65,7 @@ class VibeVoiceModel:
                 torch_dtype=torch.float16,
                 device_map="auto",
                 low_cpu_mem_usage=True,
+                attn_implementation="flash_attention_2",
             )
             allocated = torch.cuda.memory_allocated() / 1024**3
             print(f"📊 GPU Memory after loading: {allocated:.2f}GB")
@@ -213,6 +214,9 @@ class VibeVoiceModel:
             return_tensors="pt",
             return_attention_mask=True,
         )
+        if self.device == "cuda":
+            clear_memory()
+
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -236,6 +240,10 @@ class VibeVoiceModel:
             audio_np = audio_np.squeeze()
 
         audio_np = self._trim_trailing_silence(audio_np, sr=24000)
+
+        if self.device == "cuda":
+            del outputs, inputs
+            clear_memory()
 
         print("Generation successful!")
         return audio_np, 24000
