@@ -98,8 +98,6 @@ from cli.SparkTTS import SparkTTS
 
 class SparkModel:
     def __init__(self, model_dir=None, device=0):
-        self.model = None
-        self.device = None
         """Load the model once at the beginning.
 
         Args:
@@ -113,18 +111,13 @@ class SparkModel:
         logging.info(f"Loading Spark model from: {model_dir}")
         # Determine appropriate device based on platform and availability
         if platform.system() == "Darwin":
-            # macOS with MPS support (Apple Silicon)
             self.device = torch.device(f"mps:{device}")
-            logging.info(f"Using MPS device: {device}")
         elif torch.cuda.is_available():
-            # System with CUDA support
             self.device = torch.device(f"cuda:{device}")
-            logging.info(f"Using CUDA device: {device}")
         else:
-            # Fall back to CPU
-            device = torch.device("cpu")
-            logging.info("GPU acceleration not available, using CPU")   
-        self.model = SparkTTS(model_dir, device)
+            self.device = torch.device("cpu")
+        logging.info(f"Using device: {self.device}")
+        self.model = SparkTTS(model_dir, self.device)
 
     def run_tts(
         self,
@@ -148,6 +141,10 @@ class SparkModel:
                 None,
                 None,
             )
+
+            # Convert CUDA tensor to numpy for sf.write
+            if isinstance(wav, torch.Tensor):
+                wav = wav.cpu().numpy()
 
             sf.write(output_path, wav, samplerate=16000)
         logging.info(f"Audio saved at: {output_path}")
