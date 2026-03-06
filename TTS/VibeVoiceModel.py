@@ -57,16 +57,19 @@ class VibeVoiceModel:
         
     def load_model(self):
         self.processor = VibeVoiceProcessor.from_pretrained(self.model_path)
-        
+
         if self.device == "cuda":
             print("📥 Loading model with float16 to GPU...")
+            # Load to CPU first, then move to CUDA.
+            # device_map="auto" fails because accelerate cannot dispatch
+            # custom sub-modules (AutoModel.from_config) from meta tensors.
             self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
                 self.model_path,
                 torch_dtype=torch.float16,
-                device_map="auto",
                 low_cpu_mem_usage=True,
                 attn_implementation="sdpa",
             )
+            self.model = self.model.to("cuda")
             allocated = torch.cuda.memory_allocated() / 1024**3
             print(f"📊 GPU Memory after loading: {allocated:.2f}GB")
         else:
@@ -74,7 +77,6 @@ class VibeVoiceModel:
             self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
                 self.model_path,
                 torch_dtype=torch.float32,
-                device_map="cpu",
                 low_cpu_mem_usage=True,
             )
         
